@@ -235,3 +235,59 @@ test('Gemeinsames Gemeinde-Passwort für Mitglieder', async () => {
   // Admins sind davon nicht betroffen
   assert.equal((await req('GET', '/api/folders', { as: 'admin' })).status, 200);
 });
+
+test('Hochladen in Stücken (z. B. ganzer Gottesdienst als M4A)', async () => {
+  const folders = await (await req('GET', '/api/folders', { as: 'admin' })).json();
+  const gd = folders.find((f) => f.name === 'Gottesdienste');
+  const data = Buffer.alloc(300 * 1024 + 123);
+  for (let i = 0; i < data.length; i++) data[i] = i % 251;
+  const chunkSize = 128 * 1024;
+
+  // Normale Mitglieder dürfen nicht
+  assert.equal((await req('POST', '/api/uploads', { as: 'member', body: { folderId: gd.id, name: 'x.m4a', size: 10, chunkSize } })).status, 403);
+  // Ungültige Angaben
+  assert.equal((await req('POST', '/api/uploads', { as: 'admin', body: { folderId: gd.id, name: 'x.exe', size: 10, chunkSize } })).status, 400);
+  assert.equal((await req('POST', '/api/uploads', { as: 'admin', body: { folderId: gd.id, name: 'x.m4a', size: 0, chunkSize } })).status, 400);
+
+  // M4A ohne passenden Dateityp vom Gerät → wird an der Endung erkannt
+  const start = await req('POST', '/api/uploads', { as: 'admin', body: {
+    folderId: gd.id, name: 'Gottesdienst 2026-10-04.m4a', size: data.length, mime: '', chunkSize,
+    date: '2026-10-04', speaker: 'Pastor Müller', duration: 5432.4,
+  } });
+  assert.equal(start.status, 201);
+  const { id, chunks } = await start.json();
+  assert.equal(chunks, 3);
+
+  const put = (i, buf) => fetch(`${base}/api/uploads/${id}/chunks/${i}`, {
+    method: 'PUT', headers: { Cookie: cookies.admin, 'Content-Type': 'application/octet-stream' }, body: buf,
+  });
+  // Stücke in beliebiger Reihenfolge; ein falsch großes Stück wird abgelehnt
+  assert.equal((await put(2, data.subarray(2 * chunkSize))).status, 200);
+  assert.equal((await put(0, data.subarray(0, 100))).status, 400);
+  // Fertigstellen geht erst, wenn alles da ist
+  assert.equal((await req('POST', `/api/uploads/${id}/complete`, { as: 'admin' })).status, 400);
+  await Promise.all([put(0, data.subarray(0, chunkSize)), put(1, data.subarray(chunkSize, 2 * chunkSize))]);
+  // Ein Stück doppelt senden (Wiederholung) schadet nicht
+  assert.equal((await put(1, data.subarray(chunkSize, 2 * chunkSize))).status, 200);
+
+  const done = await req('POST', `/api/uploads/${id}/complete`, { as: 'admin' });
+  assert.equal(done.status, 201);
+  const item = await done.json();
+  assert.equal(item.type, 'audio');
+  assert.equal(item.date, '2026-10-04');
+  assert.equal(item.duration, 5432);
+  assert.equal(item.speaker, 'Pastor Müller');
+  assert.match(item.file, /^2026\/10\/.+\.m4a$/);
+
+  const file = await req('GET', `/uploads/${item.file}`, { as: 'member' });
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get('content-type'), 'audio/mp4');
+  assert.ok(Buffer.from(await file.arrayBuffer()).equals(data));
+
+  // Abspielen ab einer bestimmten Stelle (Range) funktioniert
+  const range = await fetch(`${base}/uploads/${item.file}`, { headers: { Cookie: cookies.member, Range: 'bytes=1000-1999' } });
+  assert.equal(range.status, 206);
+  assert.equal((await range.arrayBuffer()).byteLength, 1000);
+
+  assert.equal((await req('POST', `/api/uploads/${id}/complete`, { as: 'admin' })).status, 404);
+});

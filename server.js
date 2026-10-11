@@ -14,13 +14,24 @@ const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 2048;
 // Erlaubte Dokument-Endungen (zusätzlich zu Bildern, Audio und Video).
 const DOCUMENT_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp', '.txt', '.rtf']);
 
+// Manche Geräte schicken bei Audio/Video keinen passenden Dateityp mit – dann zählt die Endung.
+const AUDIO_EXT = new Set(['.m4a', '.mp3', '.aac', '.wav', '.ogg', '.oga', '.opus', '.flac', '.mp4a']);
+const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.webm']);
+
 function fileType(file) {
   const ext = path.extname(file.originalname).toLowerCase();
-  if (ext === '.svg' || file.mimetype === 'image/svg+xml') return null; // SVG kann Skripte enthalten
-  const major = file.mimetype.split('/')[0];
+  const mime = String(file.mimetype || '');
+  if (ext === '.svg' || mime === 'image/svg+xml') return null; // SVG kann Skripte enthalten
+  if (AUDIO_EXT.has(ext)) return 'audio';
+  if (VIDEO_EXT.has(ext)) return 'video';
+  const major = mime.split('/')[0];
   if (['image', 'audio', 'video'].includes(major)) return major;
   if (DOCUMENT_EXT.has(ext)) return 'document';
   return null;
+}
+
+function safeExt(name) {
+  return path.extname(name).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
 }
 
 function createApp({
@@ -31,6 +42,8 @@ function createApp({
   adminPasswordReset = (process.env.ADMIN_PASSWORD_RESET || '').trim(),
   sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
 } = {}) {
+  // Reste abgebrochener Uploads vom letzten Lauf wegräumen.
+  fs.rmSync(path.join(uploadDir, '.tmp'), { recursive: true, force: true });
   fs.mkdirSync(path.join(uploadDir, '.tmp'), { recursive: true });
   const store = createStore(path.join(dataDir, 'db.json'), { initialAdminPassword: adminPassword });
   if (store.createdAdmin) {
@@ -262,8 +275,7 @@ function createApp({
     storage: multer.diskStorage({
       destination: path.join(uploadDir, '.tmp'),
       filename(req, file, cb) {
-        const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
-        cb(null, `${crypto.randomUUID()}${ext}`);
+        cb(null, `${crypto.randomUUID()}${safeExt(file.originalname)}`);
       },
     }),
     limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024, files: 50 },
@@ -334,6 +346,106 @@ function createApp({
       }
     }
   );
+
+  // ---------- Hochladen in Stücken (schneller und robust bei wackeliger Verbindung) ----------
+  //
+  // 1. POST /api/uploads                  → Upload anmelden, bekommt eine ID
+  // 2. PUT  /api/uploads/:id/chunks/:nr   → Stücke (z. B. 8 MB) hochladen, gern mehrere gleichzeitig
+  // 3. POST /api/uploads/:id/complete     → fertigstellen, Eintrag wird angelegt
+
+  const CHUNK_MAX = 16 * 1024 * 1024;
+  const sessions = new Map();
+
+  // Abgebrochene Uploads nach 6 Stunden aufräumen.
+  const cleanup = setInterval(() => {
+    for (const [id, u] of sessions) {
+      if (Date.now() - u.touched > 6 * 3600 * 1000) {
+        fs.rmSync(u.tmp, { force: true });
+        sessions.delete(id);
+      }
+    }
+  }, 3600 * 1000);
+  cleanup.unref();
+
+  app.post('/api/uploads', requireAdmin, (req, res) => {
+    const b = req.body || {};
+    if (!store.getFolder(b.folderId)) return res.status(404).json({ error: 'Ordner nicht gefunden.' });
+    const name = String(b.name || '').slice(0, 255);
+    const size = Number(b.size);
+    const chunkSize = Number(b.chunkSize);
+    const type = fileType({ originalname: name, mimetype: b.mime });
+    if (!type) return res.status(400).json({ error: `Dateityp nicht erlaubt: ${name}` });
+    if (!Number.isInteger(size) || size <= 0) return res.status(400).json({ error: `Die Datei ist leer: ${name}` });
+    if (size > MAX_UPLOAD_MB * 1024 * 1024) return res.status(400).json({ error: `Datei zu groß (max. ${MAX_UPLOAD_MB} MB).` });
+    if (!Number.isInteger(chunkSize) || chunkSize < 64 * 1024 || chunkSize > CHUNK_MAX) {
+      return res.status(400).json({ error: 'Ungültige Stückgröße.' });
+    }
+    const id = crypto.randomUUID();
+    const tmp = path.join(uploadDir, '.tmp', `${id}.part`);
+    fs.writeFileSync(tmp, '');
+    sessions.set(id, {
+      id, tmp, type, name, size, chunkSize,
+      chunks: Math.ceil(size / chunkSize),
+      received: new Set(),
+      folderId: b.folderId,
+      mime: String(b.mime || ''),
+      meta: {
+        title: b.title, date: b.date, description: b.description, speaker: b.speaker, bibleText: b.bibleText,
+        duration: b.duration,
+      },
+      user: req.user,
+      touched: Date.now(),
+    });
+    res.status(201).json({ id, chunks: Math.ceil(size / chunkSize) });
+  });
+
+  app.put(
+    '/api/uploads/:id/chunks/:index',
+    requireAdmin,
+    express.raw({ type: () => true, limit: CHUNK_MAX }),
+    async (req, res) => {
+      const u = sessions.get(req.params.id);
+      if (!u) return res.status(404).json({ error: 'Upload nicht gefunden – bitte neu starten.' });
+      const index = Number(req.params.index);
+      if (!Number.isInteger(index) || index < 0 || index >= u.chunks) {
+        return res.status(400).json({ error: 'Ungültiges Stück.' });
+      }
+      const expected = index === u.chunks - 1 ? u.size - index * u.chunkSize : u.chunkSize;
+      const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+      if (body.length !== expected) return res.status(400).json({ error: 'Stück unvollständig – wird wiederholt.' });
+      const fh = await fs.promises.open(u.tmp, 'r+');
+      try {
+        await fh.write(body, 0, body.length, index * u.chunkSize);
+      } finally {
+        await fh.close();
+      }
+      u.received.add(index);
+      u.touched = Date.now();
+      res.json({ ok: true });
+    }
+  );
+
+  app.post('/api/uploads/:id/complete', requireAdmin, (req, res) => {
+    const u = sessions.get(req.params.id);
+    if (!u) return res.status(404).json({ error: 'Upload nicht gefunden – bitte neu starten.' });
+    if (u.received.size !== u.chunks || fs.statSync(u.tmp).size !== u.size) {
+      return res.status(400).json({ error: 'Es fehlen noch Teile der Datei.' });
+    }
+    const date = validDate(u.meta.date) || today();
+    const file = `${date.slice(0, 4)}/${date.slice(5, 7)}/${crypto.randomUUID()}${safeExt(u.name)}`;
+    try {
+      const [item] = store.createItems(u.folderId, [{
+        ...u.meta, type: u.type, date, mime: u.mime, size: u.size, originalName: u.name, file,
+      }], u.user);
+      const target = path.join(uploadDir, file);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.renameSync(u.tmp, target);
+      sessions.delete(u.id);
+      res.status(201).json(item);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
 
   // ---------- Dateien ausliefern (nur angemeldet) ----------
 

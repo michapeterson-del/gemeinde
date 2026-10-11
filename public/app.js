@@ -36,8 +36,23 @@ function formatSize(bytes) {
   return Math.max(1, Math.round(bytes / 1e3)) + ' KB';
 }
 
+// Aufnahmen im Gottesdienst-Ordner heißen automatisch „Gottesdienst am …“, solange kein Titel gesetzt ist.
+function isServiceItem(item) {
+  const f = folderById(item.folderId);
+  return (item.type === 'audio' || item.type === 'video') && Boolean(f) && f.kind === 'sermons';
+}
+
 function itemTitle(item) {
-  return item.title || (item.originalName || '').replace(/\.[^.]+$/, '') || 'Ohne Titel';
+  if (item.title) return item.title;
+  if (isServiceItem(item)) return `Gottesdienst am ${formatDate(item.date)}`;
+  return (item.originalName || '').replace(/\.[^.]+$/, '') || 'Ohne Titel';
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return '';
+  const min = Math.round(seconds / 60);
+  if (min < 60) return `${min} Min.`;
+  return `${Math.floor(min / 60)} Std. ${String(min % 60).padStart(2, '0')} Min.`;
 }
 
 const fileUrl = (item) => '/uploads/' + item.file.split('/').map(encodeURIComponent).join('/');
@@ -163,10 +178,12 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
   const docs = items.filter((i) => i.type === 'document');
   const html = [];
 
-  if (media.length) {
-    html.push(`<h2 class="section">${sermons ? '⛪ Predigten & Aufnahmen' : '🎧 Aufnahmen & Videos'}</h2><div class="players">`);
+  if (media.length && sermons) {
+    html.push(`<h2 class="section">⛪ Gottesdienste</h2>${serviceList(media, showPath)}`);
+  } else if (media.length) {
+    html.push('<h2 class="section">🎧 Aufnahmen & Videos</h2><div class="players">');
     for (const m of media) {
-      const details = [m.speaker && `🎤 ${esc(m.speaker)}`, m.bibleText && `📖 ${esc(m.bibleText)}`].filter(Boolean).join(' · ');
+      const details = [formatDuration(m.duration) && `⏱ ${formatDuration(m.duration)}`, m.speaker && `🎤 ${esc(m.speaker)}`, m.bibleText && `📖 ${esc(m.bibleText)}`].filter(Boolean).join(' · ');
       html.push(`
         <article class="player">
           <div class="player-head">
@@ -246,7 +263,66 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
 }
 
 // Klicks auf Bilder (Vollbild) und Stifte (Bearbeiten) verbinden.
+// Übersichtliche Gottesdienst-Liste, nach Monaten gruppiert. Abgespielt wird per Tipp auf die Zeile.
+function serviceList(list, showPath) {
+  const groups = [];
+  for (const m of list) {
+    const d = parseDate(m.date);
+    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, items: [] });
+    groups[groups.length - 1].items.push(m);
+  }
+  return groups.map((g) => `
+    <h3 class="date-head">${esc(g.label)}</h3>
+    <div class="services">${g.items.map((m) => {
+      const details = [
+        WEEKDAYS[parseDate(m.date).getDay()],
+        formatDuration(m.duration) && `⏱ ${formatDuration(m.duration)}`,
+        m.speaker && `🎤 ${esc(m.speaker)}`,
+        m.bibleText && `📖 ${esc(m.bibleText)}`,
+      ].filter(Boolean).join(' · ');
+      return `
+        <article class="service">
+          <div class="service-head">
+            <button class="service-row" data-play="${esc(m.id)}" aria-label="${esc(itemTitle(m))} abspielen">
+              ${dateBadge(m.date)}
+              <div class="grow">
+                <div class="title">${esc(itemTitle(m))}</div>
+                <div class="meta">${details}</div>
+              </div>
+              <span class="play-icon" aria-hidden="true">▶</span>
+            </button>
+            ${editButton(m)}
+          </div>
+          ${pathLink(m, showPath)}
+          <div class="service-player" data-player="${esc(m.id)}" hidden></div>
+        </article>`;
+    }).join('')}</div>`).join('');
+}
+
 function bindItems(container, items, reload) {
+  container.querySelectorAll('[data-play]').forEach((btn) => btn.addEventListener('click', () => {
+    const item = items.find((i) => i.id === btn.dataset.play);
+    const box = container.querySelector(`[data-player="${item.id}"]`);
+    const wasOpen = !box.hidden;
+    // Immer nur eine Aufnahme gleichzeitig
+    container.querySelectorAll('[data-player]').forEach((b) => {
+      b.querySelectorAll('audio, video').forEach((m) => m.pause());
+      b.innerHTML = '';
+      b.hidden = true;
+    });
+    container.querySelectorAll('[data-play]').forEach((b) => b.classList.remove('playing'));
+    if (wasOpen) return;
+    btn.classList.add('playing');
+    box.hidden = false;
+    box.innerHTML = `
+      ${item.type === 'video'
+        ? `<video controls autoplay playsinline src="${esc(fileUrl(item))}"></video>`
+        : `<audio controls autoplay src="${esc(fileUrl(item))}"></audio>`}
+      ${item.description ? `<p class="desc">${esc(item.description)}</p>` : ''}
+      <a class="meta" href="${esc(fileUrl(item))}" download="${esc(item.originalName)}">⬇ Herunterladen (${esc(formatSize(item.size))})</a>`;
+  }));
+
   const images = items.filter((i) => i.type === 'image');
   container.querySelectorAll('[data-photo]').forEach((el) =>
     el.addEventListener('click', () => openLightbox(images, images.findIndex((i) => i.id === el.dataset.photo)))
@@ -368,7 +444,7 @@ async function renderFolder(id) {
     </div>
     ${isAdmin() ? `
       <div class="toolbar">
-        <button class="btn" id="tb-upload">⬆️ Dateien hochladen</button>
+        <button class="btn" id="tb-upload">⬆️ ${folder.kind === 'sermons' ? 'Gottesdienst hochladen' : 'Dateien hochladen'}</button>
         <button class="btn secondary" id="tb-folder">📁 Unterordner anlegen</button>
         <button class="btn secondary" id="tb-edit">⚙️ Ordner bearbeiten</button>
       </div>` : ''}
@@ -468,7 +544,7 @@ async function renderAdmin() {
   const tree = folderTree().map(({ folder: f, depth }) => `
     <div class="tree-row" style="--depth:${depth}">
       <a href="#/ordner/${esc(f.id)}" class="grow"><span class="tree-icon" style="--c:${esc(f.color)}">${esc(f.icon)}</span> ${esc(f.name)}
-        <span class="meta">${f.itemCount ? `· ${f.itemCount} ${f.itemCount === 1 ? 'Eintrag' : 'Einträge'}` : ''}${f.kind === 'sermons' ? ' · Predigtordner' : ''}</span></a>
+        <span class="meta">${f.itemCount ? `· ${f.itemCount} ${f.itemCount === 1 ? 'Eintrag' : 'Einträge'}` : ''}${f.kind === 'sermons' ? ' · Gottesdienst-Ordner' : ''}</span></a>
       <button class="btn small secondary" data-sub="${esc(f.id)}" title="Unterordner anlegen">＋ Unterordner</button>
       <button class="btn small secondary" data-folder="${esc(f.id)}" title="Bearbeiten">✏️</button>
     </div>`).join('');
@@ -598,14 +674,14 @@ function storageCard(st) {
   const level = pct >= 90 ? 'full' : pct >= 75 ? 'warn' : 'ok';
   // Wie viele Predigten passen noch? Durchschnitt der bisherigen Audios, sonst 40 MB.
   const audio = st.byType.audio;
-  const avg = audio && audio.count && audio.size / audio.count > 5e6 ? audio.size / audio.count : 40e6;
+  const avg = audio && audio.count && audio.size / audio.count > 5e6 ? audio.size / audio.count : 80e6;
   const more = Math.max(0, Math.floor(st.free / avg));
   return `
     <section class="card">
       <h2>💾 Speicher</h2>
       <div class="storage-head"><b>${esc(formatSize(st.used))}</b> von ${esc(formatSize(st.total))} belegt <span class="meta">(${pct} %)</span></div>
       <div class="storage-bar ${level}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
-      <p class="meta">Noch frei: ${esc(formatSize(st.free))} – Platz für ca. <b>${more.toLocaleString('de-DE')}</b> weitere Predigten (je ca. ${esc(formatSize(avg))}).</p>
+      <p class="meta">Noch frei: ${esc(formatSize(st.free))} – Platz für ca. <b>${more.toLocaleString('de-DE')}</b> weitere Gottesdienste (je ca. ${esc(formatSize(avg))}).</p>
       ${level !== 'ok' ? `<p class="storage-hint">${level === 'full' ? '⚠️ Der Speicher ist fast voll!' : 'ℹ️ Der Speicher wird langsam knapp.'} Bei Render unter <b>Disks</b> kannst du ihn vergrößern.</p>` : ''}
       ${rows ? `<div class="storage-rows">${rows}</div>` : ''}
     </section>`;
@@ -631,7 +707,7 @@ function openFolderDialog(folder, after) {
         <label>Anzeige
           <select name="kind">
             <option value="normal">Normal</option>
-            <option value="sermons" ${folder.kind === 'sermons' ? 'selected' : ''}>Gottesdienste / Predigten</option>
+            <option value="sermons" ${folder.kind === 'sermons' ? 'selected' : ''}>Gottesdienste (übersichtliche Liste)</option>
           </select>
         </label>
         <label>Symbol <small>ein Emoji</small><input name="icon" maxlength="8" value="${esc(folder.icon || '📁')}"></label>
@@ -698,9 +774,35 @@ async function detectDate(file) {
   return { date: localDate(new Date(file.lastModified || Date.now())), source: 'Datei' };
 }
 
+const AUDIO_EXT = /\.(m4a|mp3|aac|wav|ogg|oga|opus|flac|mp4a)$/i;
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm)$/i;
+
 function fileKind(file) {
+  if (AUDIO_EXT.test(file.name)) return 'audio';
+  if (VIDEO_EXT.test(file.name)) return 'video';
   const major = (file.type || '').split('/')[0];
   return ['image', 'audio', 'video'].includes(major) ? major : 'document';
+}
+
+// Spieldauer einer Aufnahme direkt im Browser auslesen (für die Anzeige „⏱ 1 Std. 32 Min.“).
+function readDuration(file) {
+  return new Promise((resolve) => {
+    const kind = fileKind(file);
+    if (kind !== 'audio' && kind !== 'video') return resolve(null);
+    const el = document.createElement(kind);
+    const url = URL.createObjectURL(file);
+    const done = (value) => {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      el.removeAttribute('src');
+      resolve(value);
+    };
+    const timer = setTimeout(() => done(null), 6000);
+    el.preload = 'metadata';
+    el.onloadedmetadata = () => done(Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null);
+    el.onerror = () => done(null);
+    el.src = url;
+  });
 }
 
 function openUploadDialog(folderId, after) {
@@ -709,22 +811,22 @@ function openUploadDialog(folderId, after) {
 
   openDialog(`
     <form id="upload-form">
-      <h2>⬆️ Dateien hochladen</h2>
+      <h2>⬆️ ${startFolder && startFolder.kind === 'sermons' ? 'Gottesdienst hochladen' : 'Dateien hochladen'}</h2>
       <label>In welchen Ordner? <select name="folderId" required>${folderOptions(folderId)}</select></label>
       <div class="dropzone" id="dropzone" tabindex="0" role="button">
         <div style="font-size:2rem">📤</div>
-        Bilder, Aufnahmen, Videos oder Dokumente hierher ziehen<br>oder <b>tippen zum Auswählen</b>
-        <input type="file" id="file-input" multiple accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.rtf" hidden>
+        Gottesdienst-Aufnahmen (z. B. M4A, MP3), Bilder oder Dokumente hierher ziehen<br>oder <b>tippen zum Auswählen</b>
+        <input type="file" id="file-input" multiple accept="audio/*,.m4a,.mp3,.aac,.wav,image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.rtf" hidden>
       </div>
-      <p class="meta" id="date-hint" hidden>📅 Das Datum wird automatisch erkannt (aus dem Foto oder der Datei). Du kannst es hier noch ändern.</p>
+      <p class="meta" id="date-hint" hidden>📅 Das Datum wird automatisch erkannt. Bitte kurz prüfen – du kannst es hier noch ändern.</p>
       <div class="file-list" id="file-list"></div>
       <details id="more" ${startFolder && startFolder.kind === 'sermons' ? 'open' : ''}>
         <summary>Weitere Angaben (optional)</summary>
         <div class="form-grid" style="margin-top:10px">
           <label>Datum für alle setzen <input type="date" id="all-date"></label>
-          <label>Prediger / Sprecher <input name="speaker" maxlength="200"></label>
-          <label>Bibelstelle <input name="bibleText" maxlength="200" placeholder="z. B. Johannes 3,16"></label>
-          <label class="full">Beschreibung <textarea name="description" maxlength="5000" rows="3"></textarea></label>
+          <label>Prediger <small>optional</small><input name="speaker" maxlength="200"></label>
+          <label>Bibelstelle(n) <small>optional</small><input name="bibleText" maxlength="200" placeholder="z. B. Johannes 3,16"></label>
+          <label class="full">Beschreibung <small>optional, z. B. „Erntedank mit Chor“</small><textarea name="description" maxlength="5000" rows="3"></textarea></label>
         </div>
       </details>
       <div class="progress" id="progress" hidden><div></div></div>
@@ -739,6 +841,14 @@ function openUploadDialog(folderId, after) {
     const drop = d.querySelector('#dropzone');
     const btn = d.querySelector('#upload-btn');
 
+    const titlePlaceholder = (en) => {
+      const f = folderById(d.querySelector('select[name=folderId]').value);
+      const kind = fileKind(en.file);
+      return f && f.kind === 'sermons' && (kind === 'audio' || kind === 'video')
+        ? `Gottesdienst am ${formatDate(en.date)} (automatisch)`
+        : en.file.name;
+    };
+
     const draw = () => {
       d.querySelector('#date-hint').hidden = !entries.length;
       btn.disabled = !entries.length;
@@ -747,14 +857,18 @@ function openUploadDialog(folderId, after) {
         <div class="file-row">
           ${en.url ? `<img src="${en.url}" alt="">` : `<span class="file-icon">${TYPE_ICON[fileKind(en.file)]}</span>`}
           <div class="grow">
-            <input class="file-title" data-i="${i}" value="${esc(en.title)}" placeholder="${esc(en.file.name)}" aria-label="Titel">
-            <div class="meta">${esc(formatSize(en.file.size))} · Datum aus ${esc(en.source)}</div>
+            <input class="file-title" data-i="${i}" value="${esc(en.title)}" placeholder="${esc(titlePlaceholder(en))}" aria-label="Titel">
+            <div class="meta">${esc(formatSize(en.file.size))}${en.duration ? ' · ⏱ ' + esc(formatDuration(en.duration)) : ''} · Datum aus ${esc(en.source)}</div>
           </div>
           <input type="date" class="file-date" data-i="${i}" value="${esc(en.date)}" aria-label="Datum" required>
           <button type="button" class="icon-btn" data-remove="${i}" aria-label="Entfernen">✕</button>
         </div>`).join('');
       list.querySelectorAll('.file-title').forEach((el) => el.addEventListener('input', () => (entries[el.dataset.i].title = el.value)));
-      list.querySelectorAll('.file-date').forEach((el) => el.addEventListener('change', () => (entries[el.dataset.i].date = el.value)));
+      list.querySelectorAll('.file-date').forEach((el) => el.addEventListener('change', () => {
+        const en = entries[el.dataset.i];
+        en.date = el.value;
+        list.querySelector(`.file-title[data-i="${el.dataset.i}"]`).placeholder = titlePlaceholder(en);
+      }));
       list.querySelectorAll('[data-remove]').forEach((el) => el.addEventListener('click', () => {
         const [removed] = entries.splice(Number(el.dataset.remove), 1);
         if (removed.url) URL.revokeObjectURL(removed.url);
@@ -764,14 +878,17 @@ function openUploadDialog(folderId, after) {
 
     const addFiles = async (files) => {
       for (const file of files) {
-        const { date, source } = await detectDate(file);
-        const isAudioVideo = /^(audio|video)\//.test(file.type);
+        if (!file.size) {
+          toast(`„${file.name}“ ist leer und wird übersprungen.`, true);
+          continue;
+        }
+        const [{ date, source }, duration] = await Promise.all([detectDate(file), readDuration(file)]);
         entries.push({
           file,
           date,
           source,
-          // Bei Aufnahmen den Dateinamen als Titel vorschlagen, bei Fotos leer lassen.
-          title: isAudioVideo ? file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ') : '',
+          duration,
+          title: '',
           url: file.type.startsWith('image/') && file.size < 30e6 ? URL.createObjectURL(file) : null,
         });
       }
@@ -793,6 +910,7 @@ function openUploadDialog(folderId, after) {
     d.querySelector('select[name=folderId]').addEventListener('change', (e) => {
       const f = folderById(e.target.value);
       if (f && f.kind === 'sermons') d.querySelector('#more').open = true;
+      draw();
     });
 
     d.querySelector('#upload-form').addEventListener('submit', async (e) => {
@@ -801,6 +919,8 @@ function openUploadDialog(folderId, after) {
       const shared = formData(e.target);
       btn.disabled = true;
       d.querySelectorAll('input, select, textarea, [data-remove]').forEach((el) => (el.disabled = true));
+      d.querySelector('[data-close]').disabled = true;
+      d.querySelector('.dialog-close').hidden = true;
       const ok = await uploadEntries(shared.folderId, entries, shared, d);
       entries.forEach((en) => en.url && URL.revokeObjectURL(en.url));
       dialog.close();
@@ -813,60 +933,127 @@ function openUploadDialog(folderId, after) {
   });
 }
 
-// Lädt Dateien in kleinen Paketen hoch, damit auch viele Fotos auf einmal klappen.
+// Hochladen in Stücken: jede Datei wird in 8-MB-Teile zerlegt, davon gehen 3 gleichzeitig hoch.
+// Bricht die Verbindung kurz ab, wird nur das betroffene Stück wiederholt – nicht die ganze Datei.
+const CHUNK_SIZE = 8 * 1024 * 1024;
+const PARALLEL = 3;
+const RETRIES = 5;
+let uploading = false;
+
+window.addEventListener('beforeunload', (e) => {
+  if (uploading) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+dialog.addEventListener('cancel', (e) => {
+  if (uploading) e.preventDefault(); // ESC bricht den Upload nicht versehentlich ab
+});
+
+function sendChunk(uploadId, blob, index, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `/api/uploads/${encodeURIComponent(uploadId)}/chunks/${index}`);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.upload.onprogress = (e) => onProgress(e.loaded);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      let msg = `Fehler ${xhr.status}`;
+      try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
+      const err = new Error(msg);
+      // 4xx (außer 408/429) sind echte Fehler – keine Wiederholung
+      err.fatal = xhr.status >= 400 && xhr.status < 500 && xhr.status !== 408 && xhr.status !== 429;
+      reject(err);
+    };
+    xhr.onerror = () => reject(new Error('Verbindung unterbrochen.'));
+    xhr.ontimeout = () => reject(new Error('Zeitüberschreitung.'));
+    xhr.timeout = 5 * 60 * 1000;
+    xhr.send(blob);
+  });
+}
+
 async function uploadEntries(folderId, entries, shared, d) {
   const bar = d.querySelector('#progress');
   const text = d.querySelector('#progress-text');
-  const totalBytes = entries.reduce((s, en) => s + en.file.size, 0) || 1;
-  let sentBytes = 0;
-  bar.hidden = false;
-
-  const batches = [];
-  let current = [];
-  let size = 0;
-  for (const en of entries) {
-    if (current.length && (current.length >= 10 || size + en.file.size > 200e6)) {
-      batches.push(current); current = []; size = 0;
-    }
-    current.push(en); size += en.file.size;
-  }
-  if (current.length) batches.push(current);
-
+  const totalBytes = entries.reduce((sum, en) => sum + en.file.size, 0) || 1;
+  const startedAt = Date.now();
+  let doneBytes = 0;
+  const inflight = new Map();
   let uploaded = 0;
-  try {
-    for (const batch of batches) {
-      const fd = new FormData();
-      // Textfelder zuerst, dann die Dateien
-      fd.append('meta', JSON.stringify(batch.map((en) => ({ date: en.date, title: en.title }))));
-      for (const key of ['speaker', 'bibleText', 'description']) fd.append(key, shared[key] || '');
-      batch.forEach((en) => fd.append('files', en.file));
-      const batchSize = batch.reduce((s, en) => s + en.file.size, 0);
+  let retryNote = '';
+  bar.hidden = false;
+  uploading = true;
 
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `/api/folders/${encodeURIComponent(folderId)}/items`);
-        xhr.upload.onprogress = (e) => {
-          const pct = ((sentBytes + (e.loaded / (e.total || 1)) * batchSize) / totalBytes) * 100;
-          bar.firstElementChild.style.width = pct.toFixed(1) + '%';
-          text.textContent = `Lade hoch … ${Math.round(pct)} % (${uploaded} von ${entries.length} fertig)`;
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) return resolve();
-          let msg = `Fehler ${xhr.status}`;
-          try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
-          reject(new Error(msg));
-        };
-        xhr.onerror = () => reject(new Error('Verbindung unterbrochen.'));
-        xhr.send(fd);
+  const show = () => {
+    let sent = doneBytes;
+    for (const v of inflight.values()) sent += v;
+    const pct = Math.min(100, (sent / totalBytes) * 100);
+    bar.firstElementChild.style.width = pct.toFixed(1) + '%';
+    const secs = (Date.now() - startedAt) / 1000;
+    const speed = secs > 2 ? sent / secs : 0;
+    const rest = speed ? (totalBytes - sent) / speed : 0;
+    const restText = !speed ? '' : rest < 60 ? ' · gleich fertig' : ` · noch ca. ${Math.ceil(rest / 60)} Min.`;
+    text.textContent = `Lade hoch … ${Math.round(pct)} % · ${formatSize(sent)} von ${formatSize(totalBytes)}` +
+      (entries.length > 1 ? ` · Datei ${Math.min(uploaded + 1, entries.length)} von ${entries.length}` : '') +
+      restText + retryNote;
+  };
+
+  try {
+    for (const en of entries) {
+      const file = en.file;
+      const session = await api('/api/uploads', {
+        method: 'POST',
+        body: {
+          folderId,
+          name: file.name,
+          size: file.size,
+          mime: file.type,
+          chunkSize: CHUNK_SIZE,
+          date: en.date,
+          title: en.title,
+          duration: en.duration,
+          speaker: shared.speaker || '',
+          bibleText: shared.bibleText || '',
+          description: shared.description || '',
+        },
       });
-      sentBytes += batchSize;
-      uploaded += batch.length;
+
+      let next = 0;
+      const worker = async () => {
+        while (next < session.chunks) {
+          const index = next++;
+          const blob = file.slice(index * CHUNK_SIZE, Math.min(file.size, (index + 1) * CHUNK_SIZE));
+          const key = `${session.id}:${index}`;
+          for (let attempt = 1; ; attempt++) {
+            try {
+              await sendChunk(session.id, blob, index, (loaded) => { inflight.set(key, loaded); show(); });
+              break;
+            } catch (err) {
+              inflight.delete(key);
+              if (err.fatal || attempt >= RETRIES) throw err;
+              retryNote = ' · Verbindung wackelt, versuche erneut …';
+              show();
+              await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+            }
+          }
+          inflight.delete(key);
+          doneBytes += blob.size;
+          retryNote = '';
+          show();
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(PARALLEL, session.chunks) }, worker));
+      await api(`/api/uploads/${encodeURIComponent(session.id)}/complete`, { method: 'POST' });
+      uploaded++;
+      show();
     }
     toast(`${uploaded} ${uploaded === 1 ? 'Datei' : 'Dateien'} hochgeladen ✓`);
     return true;
   } catch (err) {
     toast(`${err.message} (${uploaded} von ${entries.length} hochgeladen)`, true);
     return false;
+  } finally {
+    uploading = false;
   }
 }
 
@@ -880,11 +1067,11 @@ function openItemDialog(item, after) {
       ${item.type === 'image' ? `<img class="dialog-preview" src="${esc(fileUrl(item))}" alt="">` : ''}
       <div class="form-grid">
         <label class="full">${item.type === 'image' ? 'Bildunterschrift' : 'Titel'}
-          <input name="title" maxlength="200" value="${esc(item.title)}" placeholder="${esc(item.originalName || '')}"></label>
+          <input name="title" maxlength="200" value="${esc(item.title)}" placeholder="${esc(itemTitle({ ...item, title: '' }))}"></label>
         <label>Datum <input type="date" name="date" value="${esc(item.date)}" required></label>
         <label>Ordner <select name="folderId">${folderOptions(item.folderId)}</select></label>
         ${isMedia ? `
-          <label>Prediger / Sprecher <input name="speaker" maxlength="200" value="${esc(item.speaker)}"></label>
+          <label>Prediger <small>optional</small><input name="speaker" maxlength="200" value="${esc(item.speaker)}"></label>
           <label>Bibelstelle <input name="bibleText" maxlength="200" value="${esc(item.bibleText)}"></label>` : ''}
         ${item.type === 'text'
           ? `<label class="full">Text <textarea name="text" rows="10" maxlength="20000">${esc(item.text)}</textarea></label>`
@@ -1275,7 +1462,7 @@ document.getElementById('nav-upload').addEventListener('click', () => {
   openDialog(`
     <h2>Was möchtest du hinzufügen?</h2>
     <div class="choice-grid">
-      <button class="choice" data-choice="upload"><span>⬆️</span>Bilder, Aufnahmen<br>oder Dokumente</button>
+      <button class="choice" data-choice="upload"><span>⬆️</span>Gottesdienst, Bilder<br>oder Dokumente</button>
       <button class="choice" data-choice="folder"><span>📁</span>Neuer Ordner</button>
       <button class="choice" data-choice="event"><span>📅</span>Termin eintragen</button>
       <button class="choice" data-choice="announcement"><span>📢</span>Vermeldung schreiben</button>

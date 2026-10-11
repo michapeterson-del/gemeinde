@@ -325,6 +325,48 @@ details summary { cursor: pointer; font-weight: 600; margin: 12px 0 4px; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 10px; z-index: 200; box-shadow: var(--shadow); max-width: calc(100vw - 32px); }
 .toast.error { background: var(--danger); color: #fff; }
 
+/* ---------- Gottesdienst-Liste ---------- */
+
+.services { display: flex; flex-direction: column; gap: 8px; }
+.service { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.service-head { display: flex; align-items: center; gap: 8px; padding-right: 10px; }
+.service-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.service-row .title { font-weight: 700; }
+.service-row:hover .play-icon { background: var(--accent); color: #fff; }
+.play-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 1rem;
+  transition: background 0.15s;
+}
+.service-row.playing .play-icon { background: var(--accent); color: #fff; }
+.service-row.playing .play-icon::before { content: '■'; }
+.service-row.playing .play-icon { font-size: 0; }
+.service-row.playing .play-icon::before { font-size: 0.9rem; }
+.service .path-link { margin: 0 0 8px 86px; }
+.service-player { padding: 0 14px 12px; }
+.service-player audio, .service-player video { width: 100%; display: block; margin-bottom: 6px; }
+.service-player video { max-height: 70vh; background: #000; border-radius: 8px; }
+
 /* ---------- Aktuelles ---------- */
 
 .news-preview { margin-top: 8px; }

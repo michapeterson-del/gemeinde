@@ -21,7 +21,11 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
   - Bilder › Gemeindefeste
   - Gottesdienste (als Predigtliste mit Prediger und Bibelstelle)
   - Texte & Dokumente
-- **Hinzufügen**: Bilder, Audio, Videos und Dokumente (PDF, Word, Excel …) – und den Zielordner auswählen.
+- **Gottesdienste**: ganze Gottesdienst-Aufnahmen (z. B. **M4A** oder MP3) als übersichtliche Liste nach Monaten –
+  automatisch „Gottesdienst am …“ benannt, mit Wochentag und Spieldauer; ein Tipp spielt ab.
+- **Hinzufügen**: Aufnahmen, Bilder, Videos und Dokumente (PDF, Word, Excel …) – und den Zielordner auswählen.
+- **Schnelles, robustes Hochladen**: große Dateien werden in 8-MB-Stücke geteilt, 3 davon gleichzeitig gesendet;
+  bricht die Verbindung kurz ab, wird nur das betroffene Stück automatisch wiederholt.
 - **Automatisches Datum**: Beim Hochladen wird das Aufnahmedatum aus dem Foto gelesen
   (sonst aus dem Dateinamen, z. B. `IMG_20260815_…`). Man kann es vor dem Hochladen noch ändern.
   Bilder werden im Ordner nach Tagen gruppiert angezeigt.
