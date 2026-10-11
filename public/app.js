@@ -264,12 +264,12 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
 
 // Klicks auf Bilder (Vollbild) und Stifte (Bearbeiten) verbinden.
 // Übersichtliche Gottesdienst-Liste, nach Monaten gruppiert. Abgespielt wird per Tipp auf die Zeile.
-function serviceList(list, showPath) {
+function serviceList(list, showPath, { months = !showPath } = {}) {
   const groups = [];
   for (const m of list) {
     const d = parseDate(m.date);
-    // Auf Startseite/Suche (showPath) einfache Liste ohne Monatsüberschriften
-    const label = showPath ? '' : `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    // Monatsüberschriften nur in der Gottesdienst-Liste selbst, nicht auf Startseite/Suche
+    const label = months ? `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}` : '';
     if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, items: [] });
     groups[groups.length - 1].items.push(m);
   }
@@ -382,43 +382,80 @@ async function renderLogin(mode) {
 // ---------- Seiten ----------
 
 async function renderHome() {
-  const [{ children }, recent, news, prayers] = await Promise.all([
-    api('/api/folders/root'),
-    api('/api/items?sort=recent&limit=12'),
+  await loadFolders();
+  // Hauptbereiche: zuerst Gottesdienste, dann Bilder, dann alle weiteren Hauptordner.
+  const tops = state.folders
+    .filter((f) => !f.parentId)
+    .sort((x, y) => (x.kind === 'sermons' ? 0 : 1) - (y.kind === 'sermons' ? 0 : 1) || x.name.localeCompare(y.name, 'de'));
+  const childrenOf = (id) => state.folders.filter((f) => f.parentId === id);
+
+  const [news, prayers, ...sectionItems] = await Promise.all([
     api('/api/news'),
     api('/api/prayers').catch(() => []),
+    ...tops.map((f) =>
+      f.kind === 'sermons' || !childrenOf(f.id).length
+        ? api(`/api/items?folder=${encodeURIComponent(f.id)}&limit=30`).catch(() => [])
+        : Promise.resolve([])
+    ),
   ]);
   state.eventCategories = news.categories;
   const hour = new Date().getHours();
   const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Hallo' : 'Guten Abend';
 
+  const sections = tops.map((f, i) => {
+    let content;
+    let items = [];
+    if (f.kind === 'sermons') {
+      items = sectionItems[i].filter((it) => it.type === 'audio' || it.type === 'video').slice(0, 5);
+      content = items.length
+        ? serviceList(items, false, { months: false })
+        : '<p class="meta">Noch keine Gottesdienste hochgeladen.</p>';
+    } else if (childrenOf(f.id).length) {
+      content = `<div class="folder-grid">${childrenOf(f.id).map(folderTile).join('')}</div>`;
+    } else {
+      items = sectionItems[i].slice(0, 6);
+      if (!items.length && !isAdmin()) return null; // leere Bereiche nur Admins zeigen
+      content = items.length ? renderItems(items) : '<p class="meta">Noch leer.</p>';
+    }
+    return {
+      folder: f,
+      items,
+      html: `
+        <section class="home-section" data-section="${esc(f.id)}">
+          <div class="row">
+            <h2 class="section grow">${esc(f.name)}</h2>
+            <a href="#/ordner/${esc(f.id)}">${f.kind === 'sermons' ? 'Alle Gottesdienste' : 'Alle anzeigen'} →</a>
+          </div>
+          ${content}
+        </section>`,
+    };
+  }).filter(Boolean);
+
   app.innerHTML = `
     <section class="hero">
       <h1>${state.user.shared ? 'Herzlich willkommen!' : `${greeting}, ${esc(state.user.name)}!`}</h1>
-      <p>Bilder, Gottesdienste und Erinnerungen aus unserem Gemeindeleben – alles an einem Ort.</p>
       <form id="hero-search" role="search">
-        <input name="q" placeholder="Suche nach Predigt, Bibelstelle, Freizeit …" aria-label="Suche">
+        <input name="q" placeholder="Suche nach Gottesdienst, Bibelstelle, Freizeit …" aria-label="Suche">
         <button class="btn light">Suchen</button>
       </form>
     </section>
+
+    ${sections.map((sec) => sec.html).join('')}
 
     <div id="news-preview">${newsPreview(news)}</div>
 
     <div id="prayer-preview">${prayerPreview(prayers)}</div>
 
-    <div class="row">
-      <h2 class="section grow">Ordner</h2>
-      ${isAdmin() ? '<button class="btn secondary small" id="new-folder">＋ Neuer Ordner</button>' : ''}
-    </div>
-    <div class="folder-grid">${children.map(folderTile).join('')}</div>
-
-    ${recent.length ? `<h2 class="section" style="margin-top:40px">Neu hinzugefügt</h2><div id="recent">${renderItems(recent, { showPath: true })}</div>` : ''}
+    ${isAdmin() ? '<p style="margin-top:32px"><button class="btn secondary small" id="new-folder">＋ Neuen Hauptbereich anlegen</button></p>' : ''}
   `;
 
   document.getElementById('hero-search').addEventListener('submit', (e) => {
     e.preventDefault();
     location.hash = '#/suche?q=' + encodeURIComponent(e.target.q.value);
   });
+  for (const sec of sections) {
+    if (sec.items.length) bindItems(app.querySelector(`[data-section="${sec.folder.id}"]`), sec.items, renderHome);
+  }
   if (isAdmin()) document.getElementById('new-folder').onclick = () => openFolderDialog({ parentId: null });
   const preview = document.getElementById('news-preview');
   bindNews(preview, news, renderHome);
@@ -426,7 +463,6 @@ async function renderHome() {
   const pp = document.getElementById('prayer-preview');
   bindPrayers(pp, prayers, renderHome);
   pp.querySelectorAll('[data-new-prayer]').forEach((b) => (b.onclick = () => openPrayerDialog(null, renderHome)));
-  if (recent.length) bindItems(document.getElementById('recent'), recent, renderHome);
 }
 
 async function renderFolder(id) {
