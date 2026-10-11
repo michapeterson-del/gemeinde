@@ -131,7 +131,10 @@ das ist bei Render mit dauerhaftem Speicher normal. Die Daten bleiben dabei erha
 
 ## 📦 Speicher wird voll?
 
-Dienst → **Disks** → Größe erhöhen (z. B. auf 20 GB). Vergrößern geht jederzeit,
+Wie voll der Speicher ist, siehst du in der App unter **Verwaltung → 💾 Speicher**
+(ab 75 % erscheint dort ein Hinweis).
+
+Vergrößern: bei Render im Dienst → **Disks** → Größe erhöhen (z. B. auf 20 GB). Vergrößern geht jederzeit,
 **verkleinern nicht**. Jedes GB kostet etwa 0,25 $ im Monat.
 
 > 💡 Gottesdienst-**Videos** sind sehr groß. Günstiger ist es, Videos auf YouTube

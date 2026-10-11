@@ -30,8 +30,9 @@ function localDate(date) {
 }
 
 function formatSize(bytes) {
-  if (bytes > 1e9) return (bytes / 1e9).toFixed(1) + ' GB';
-  if (bytes > 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+  const num = (v) => v.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+  if (bytes > 1e9) return num(bytes / 1e9) + ' GB';
+  if (bytes > 1e6) return num(bytes / 1e6) + ' MB';
   return Math.max(1, Math.round(bytes / 1e3)) + ' KB';
 }
 
@@ -433,7 +434,7 @@ async function renderAccount() {
 
 async function renderAdmin() {
   if (!isAdmin()) return renderNotFound();
-  const users = await api('/api/users');
+  const [users, storage] = await Promise.all([api('/api/users'), api('/api/storage')]);
   await loadFolders();
 
   const tree = folderTree().map(({ folder: f, depth }) => `
@@ -446,6 +447,8 @@ async function renderAdmin() {
 
   app.innerHTML = `
     <h1>Verwaltung</h1>
+
+    ${storageCard(storage)}
 
     <section class="card">
       <div class="row"><h2 class="grow">📁 Ordnerstruktur</h2><button class="btn small" id="new-root">＋ Neuer Hauptordner</button></div>
@@ -515,6 +518,36 @@ async function renderAdmin() {
       renderAdmin();
     } catch (err) { toast(err.message, true); }
   });
+}
+
+function storageCard(st) {
+  const types = [
+    ['audio', '🎧', 'Audio-Aufnahmen'],
+    ['image', '📷', 'Bilder'],
+    ['video', '🎬', 'Videos'],
+    ['document', '📄', 'Dokumente'],
+  ].filter(([t]) => st.byType[t]);
+  const rows = types.map(([t, icon, label]) =>
+    `<div class="storage-row"><span>${icon} ${label}</span><span class="meta">${st.byType[t].count} ${st.byType[t].count === 1 ? 'Datei' : 'Dateien'} · ${esc(formatSize(st.byType[t].size))}</span></div>`).join('');
+
+  if (st.total === null) {
+    return `<section class="card"><h2>💾 Speicher</h2>${rows || '<p class="meta">Noch keine Dateien hochgeladen.</p>'}</section>`;
+  }
+  const pct = Math.min(100, Math.round((st.used / st.total) * 100));
+  const level = pct >= 90 ? 'full' : pct >= 75 ? 'warn' : 'ok';
+  // Wie viele Predigten passen noch? Durchschnitt der bisherigen Audios, sonst 40 MB.
+  const audio = st.byType.audio;
+  const avg = audio && audio.count && audio.size / audio.count > 5e6 ? audio.size / audio.count : 40e6;
+  const more = Math.max(0, Math.floor(st.free / avg));
+  return `
+    <section class="card">
+      <h2>💾 Speicher</h2>
+      <div class="storage-head"><b>${esc(formatSize(st.used))}</b> von ${esc(formatSize(st.total))} belegt <span class="meta">(${pct} %)</span></div>
+      <div class="storage-bar ${level}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
+      <p class="meta">Noch frei: ${esc(formatSize(st.free))} – Platz für ca. <b>${more.toLocaleString('de-DE')}</b> weitere Predigten (je ca. ${esc(formatSize(avg))}).</p>
+      ${level !== 'ok' ? `<p class="storage-hint">${level === 'full' ? '⚠️ Der Speicher ist fast voll!' : 'ℹ️ Der Speicher wird langsam knapp.'} Bei Render unter <b>Disks</b> kannst du ihn vergrößern.</p>` : ''}
+      ${rows ? `<div class="storage-rows">${rows}</div>` : ''}
+    </section>`;
 }
 
 function renderNotFound() {

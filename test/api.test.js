@@ -108,6 +108,13 @@ test('Verschachtelte Ordner, Upload mit Datum, Texte, Suche', async () => {
   assert.equal(await file.text(), 'fakejpg');
   assert.match(file.headers.get('content-security-policy'), /sandbox/);
 
+  // Speicheranzeige (nur Admin)
+  assert.equal((await req('GET', '/api/storage', { as: 'member' })).status, 403);
+  const storage = await (await req('GET', '/api/storage', { as: 'admin' })).json();
+  assert.deepEqual(storage.byType.image, { count: 1, size: 7 });
+  assert.equal(storage.byType.document.count, 1);
+  assert.ok(storage.total > 0 && storage.free > 0);
+
   // Normale Benutzer dürfen nicht hochladen
   const fd2 = new FormData();
   fd2.append('files', new Blob(['x'], { type: 'image/png' }), 'a.png');

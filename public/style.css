@@ -293,6 +293,17 @@ details summary { cursor: pointer; font-weight: 600; margin: 12px 0 4px; }
 .user-row select { width: auto; padding: 5px 8px; }
 .role { display: inline-block; margin-top: 4px; padding: 1px 10px; border-radius: 999px; font-size: 0.8rem; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 
+/* ---------- Speicher ---------- */
+
+.storage-head { font-size: 1.05rem; margin-bottom: 8px; }
+.storage-bar { height: 14px; background: var(--border); border-radius: 999px; overflow: hidden; }
+.storage-bar > div { height: 100%; background: #2fa36b; border-radius: 999px; min-width: 4px; }
+.storage-bar.warn > div { background: #e0a030; }
+.storage-bar.full > div { background: var(--danger); }
+.storage-hint { background: color-mix(in srgb, #e0a030 14%, transparent); border-radius: 10px; padding: 8px 12px; }
+.storage-rows { display: flex; flex-direction: column; border-top: 1px solid var(--border); margin-top: 10px; }
+.storage-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+
 /* ---------- Lightbox ---------- */
 
 .lightbox { position: fixed; inset: 0; background: rgba(10, 8, 14, 0.95); z-index: 100; display: flex; align-items: center; justify-content: center; }

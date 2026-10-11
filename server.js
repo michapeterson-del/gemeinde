@@ -139,6 +139,27 @@ function createApp({
     }
   };
 
+  // ---------- Speicherplatz (nur Admin) ----------
+
+  app.get('/api/storage', requireAdmin, handle(() => {
+    const byType = {};
+    for (const item of store.searchItems()) {
+      if (!item.file) continue;
+      const t = (byType[item.type] ||= { count: 0, size: 0 });
+      t.count++;
+      t.size += item.size || 0;
+    }
+    let total = null;
+    let free = null;
+    try {
+      // Bei Render ist das die Größe der eingestellten Disk.
+      const st = fs.statfsSync(uploadDir);
+      total = st.blocks * st.bsize;
+      free = st.bavail * st.bsize;
+    } catch {}
+    return { total, free, used: total !== null ? total - free : null, byType };
+  }));
+
   // ---------- Benutzer (nur Admin) ----------
 
   app.get('/api/users', requireAdmin, handle(() => store.listUsers()));
