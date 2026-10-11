@@ -190,6 +190,19 @@ function createApp({
     if (item.file) fs.rmSync(path.join(uploadDir, item.file), { force: true });
   }
 
+  // ---------- Aktuelles ----------
+
+  app.get('/api/news', requireLogin, handle((req) => ({
+    ...store.currentNews({ days: Math.min(Math.max(Number(req.query.days) || 120, 1), 400) }),
+    categories: store.eventCategories,
+  })));
+  app.get('/api/news/entries', requireAdmin, handle(() => store.listNewsEntries()));
+  app.post('/api/news', requireAdmin, handle((req, res) => {
+    res.status(201).json(store.createNews(req.body || {}, req.user));
+  }));
+  app.put('/api/news/:id', requireAdmin, handle((req) => store.updateNews(req.params.id, req.body || {})));
+  app.delete('/api/news/:id', requireAdmin, handle((req) => store.deleteNews(req.params.id) && { ok: true }));
+
   // ---------- Hochladen ----------
 
   const upload = multer({

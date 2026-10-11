@@ -259,6 +259,7 @@ function bindItems(container, items, reload) {
 
 function renderLogin() {
   document.getElementById('topbar').hidden = true;
+  document.getElementById('bottomnav').hidden = true;
   dialog.open && dialog.close();
   app.innerHTML = `
     <div class="login-page">
@@ -286,10 +287,12 @@ function renderLogin() {
 // ---------- Seiten ----------
 
 async function renderHome() {
-  const [{ children }, recent] = await Promise.all([
+  const [{ children }, recent, news] = await Promise.all([
     api('/api/folders/root'),
     api('/api/items?sort=recent&limit=24'),
+    api('/api/news'),
   ]);
+  state.eventCategories = news.categories;
   const hour = new Date().getHours();
   const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Hallo' : 'Guten Abend';
 
@@ -303,8 +306,10 @@ async function renderHome() {
       </form>
     </section>
 
+    <div id="news-preview">${newsPreview(news)}</div>
+
     <div class="row">
-      <h2 class="section grow">Ordner</h2>
+      <h2 class="section grow">📁 Ordner</h2>
       ${isAdmin() ? '<button class="btn secondary small" id="new-folder">＋ Neuer Ordner</button>' : ''}
     </div>
     <div class="folder-grid">${children.map(folderTile).join('')}</div>
@@ -317,6 +322,9 @@ async function renderHome() {
     location.hash = '#/suche?q=' + encodeURIComponent(e.target.q.value);
   });
   if (isAdmin()) document.getElementById('new-folder').onclick = () => openFolderDialog({ parentId: null });
+  const preview = document.getElementById('news-preview');
+  bindNews(preview, news, renderHome);
+  preview.querySelectorAll('[data-new-news]').forEach((b) => (b.onclick = () => openNewsDialog(b.dataset.newNews, null, renderHome)));
   if (recent.length) bindItems(document.getElementById('recent'), recent, renderHome);
 }
 
@@ -862,6 +870,286 @@ function openItemDialog(item, after) {
   });
 }
 
+// ---------- Aktuelles: Termine & Vermeldungen ----------
+
+const WEEKDAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+const parseDate = (iso) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+const daysBetween = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 86400000);
+
+function dayLabel(iso, today) {
+  const diff = daysBetween(today, iso);
+  if (diff === 0) return 'Heute';
+  if (diff === 1) return 'Morgen';
+  const d = parseDate(iso);
+  const short = `${WEEKDAYS[d.getDay()]}, ${d.getDate()}. ${MONTH_NAMES[d.getMonth()]}`;
+  return diff > 0 && diff < 7 ? short : short + (d.getFullYear() !== parseDate(today).getFullYear() ? ` ${d.getFullYear()}` : '');
+}
+
+function categoryOf(e) {
+  return (state.eventCategories || {})[e.category] || { name: 'Termin', icon: '📌' };
+}
+
+function repeatOptions(dateIso, selected) {
+  const d = parseDate(dateIso || localDate(new Date()));
+  const day = WEEKDAYS[d.getDay()];
+  const n = Math.ceil(d.getDate() / 7);
+  const nth = n >= 5 ? 'letzten' : `${n}.`;
+  return [
+    ['none', 'Einmalig'],
+    ['weekly', `Jede Woche (${day})`],
+    ['biweekly', `Alle 2 Wochen (${day})`],
+    ['monthly', `Jeden Monat (${nth} ${day})`],
+  ].map(([v, l]) => `<option value="${v}" ${v === (selected || 'none') ? 'selected' : ''}>${esc(l)}</option>`).join('');
+}
+
+function eventRow(e, today) {
+  const cat = categoryOf(e);
+  const time = e.time ? `🕒 ${esc(e.time)}${e.endTime ? '–' + esc(e.endTime) : ''} Uhr` : '';
+  const where = e.location ? `📍 ${esc(e.location)}` : '';
+  const admin = isAdmin()
+    ? `<div class="event-actions">
+        ${e.repeat !== 'none' ? `<button class="btn small secondary" data-cancel="${esc(e.id)}" data-date="${esc(e.date)}">${e.isCancelled ? '↩︎ Findet doch statt' : '✕ Absagen'}</button>` : ''}
+        <button class="icon-btn" data-news="${esc(e.id)}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>
+      </div>`
+    : '';
+  return `
+    <article class="event${e.isCancelled ? ' cancelled' : ''}${e.date === today ? ' today' : ''}">
+      ${dateBadge(e.date)}
+      <div class="grow">
+        <div class="event-day">${esc(dayLabel(e.date, today))}${e.isCancelled ? ' <span class="badge-cancel">Fällt aus</span>' : ''}</div>
+        <div class="title">${esc(cat.icon)} ${esc(e.title)}</div>
+        <div class="meta">${[time, where].filter(Boolean).join(' · ')}</div>
+        ${e.text ? `<div class="event-text">${esc(e.text)}</div>` : ''}
+        ${e.repeatLabel ? `<div class="meta repeat">🔁 ${esc(e.repeatLabel)}</div>` : ''}
+      </div>
+      ${admin}
+    </article>`;
+}
+
+function announcementCard(a) {
+  return `
+    <article class="announcement${a.pinned ? ' pinned' : ''}">
+      <div class="row">
+        <div class="grow">
+          <h3>${a.pinned ? '❗ ' : '📢 '}${esc(a.title)}</h3>
+          <div class="meta">${esc(formatDate(a.date))}${a.createdBy ? ' · ' + esc(a.createdBy) : ''}</div>
+        </div>
+        ${isAdmin() ? `<button class="icon-btn" data-news="${esc(a.id)}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>` : ''}
+      </div>
+      ${a.text ? `<div class="text-body">${esc(a.text)}</div>` : ''}
+    </article>`;
+}
+
+// Termine gruppieren: Diese Woche, Nächste Woche, danach nach Monat.
+function groupEvents(events, today) {
+  const t = parseDate(today);
+  const toSunday = (7 - t.getDay()) % 7;
+  const endThisWeek = localDate(new Date(t.getFullYear(), t.getMonth(), t.getDate() + toSunday));
+  const endNextWeek = localDate(new Date(t.getFullYear(), t.getMonth(), t.getDate() + toSunday + 7));
+  const groups = [];
+  for (const e of events) {
+    const d = parseDate(e.date);
+    const label = e.date <= endThisWeek ? 'Diese Woche'
+      : e.date <= endNextWeek ? 'Nächste Woche'
+      : `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, events: [] });
+    groups[groups.length - 1].events.push(e);
+  }
+  return groups;
+}
+
+function bindNews(container, entries, reload) {
+  container.querySelectorAll('[data-news]').forEach((b) => b.addEventListener('click', async () => {
+    const all = await api('/api/news/entries');
+    const entry = all.find((n) => n.id === b.dataset.news);
+    if (entry) openNewsDialog(entry.type, entry, reload);
+  }));
+  container.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', async () => {
+    const all = await api('/api/news/entries');
+    const entry = all.find((n) => n.id === b.dataset.cancel);
+    const date = b.dataset.date;
+    const cancelled = new Set(entry.cancelled || []);
+    if (cancelled.has(date)) cancelled.delete(date);
+    else {
+      if (!confirm(`„${entry.title}“ am ${formatDate(date)} absagen?`)) return;
+      cancelled.add(date);
+    }
+    try {
+      await api(`/api/news/${entry.id}`, { method: 'PUT', body: { cancelled: [...cancelled] } });
+      reload();
+    } catch (err) { toast(err.message, true); }
+  }));
+}
+
+function newsPreview(news) {
+  const upcoming = news.events.slice(0, 5);
+  if (!news.announcements.length && !upcoming.length) {
+    return isAdmin()
+      ? `<section class="news-preview empty-news"><p class="meta">Noch keine Termine oder Vermeldungen.</p>
+          <div class="row"><button class="btn small" data-new-news="event">📅 Termin eintragen</button>
+          <button class="btn small secondary" data-new-news="announcement">📢 Vermeldung schreiben</button></div></section>`
+      : '';
+  }
+  return `
+    <section class="news-preview">
+      <div class="row"><h2 class="section grow">📢 Aktuelles</h2><a href="#/aktuelles">Alle Termine & Vermeldungen →</a></div>
+      <div class="news-columns">
+        ${news.announcements.length ? `<div class="announcements">${news.announcements.slice(0, 3).map(announcementCard).join('')}
+          ${news.announcements.length > 3 ? `<a href="#/aktuelles" class="meta">+ ${news.announcements.length - 3} weitere Vermeldungen</a>` : ''}</div>` : ''}
+        ${upcoming.length ? `<div><h3 class="sub-head">📅 Nächste Termine</h3><div class="events">${upcoming.map((e) => eventRow(e, news.today)).join('')}</div></div>` : ''}
+      </div>
+    </section>`;
+}
+
+async function renderNews(days = 42) {
+  const news = await api(`/api/news?days=${days}`);
+  state.eventCategories = news.categories;
+  const groups = groupEvents(news.events, news.today);
+  const reload = () => renderNews(days);
+
+  app.innerHTML = `
+    <div class="row">
+      <h1 class="grow">📢 Aktuelles</h1>
+      <button class="btn secondary small no-print" onclick="window.print()">🖨️ Drucken</button>
+    </div>
+    ${isAdmin() ? `
+      <div class="toolbar no-print">
+        <button class="btn" data-new-news="event">📅 Termin eintragen</button>
+        <button class="btn secondary" data-new-news="announcement">📢 Vermeldung schreiben</button>
+      </div>` : ''}
+
+    <h2 class="section">Vermeldungen</h2>
+    ${news.announcements.length
+      ? `<div class="announcements">${news.announcements.map(announcementCard).join('')}</div>`
+      : '<p class="meta">Zurzeit keine Vermeldungen.</p>'}
+
+    <h2 class="section">Termine</h2>
+    ${groups.length ? groups.map((g) => `
+      <h3 class="date-head">${esc(g.label)}</h3>
+      <div class="events">${g.events.map((e) => eventRow(e, news.today)).join('')}</div>`).join('')
+      : '<p class="meta">Keine anstehenden Termine in den nächsten Wochen.</p>'}
+    ${days < 400 ? '<button class="btn secondary no-print" id="more-events" style="margin-top:16px">Weitere Termine anzeigen</button>' : ''}
+
+    ${isAdmin() ? '<div id="all-news" class="no-print"></div>' : ''}
+  `;
+
+  bindNews(app, news, reload);
+  const more = document.getElementById('more-events');
+  if (more) more.onclick = async () => {
+    const y = window.scrollY;
+    await renderNews(Math.min(days + 61, 400));
+    window.scrollTo(0, y);
+  };
+  app.querySelectorAll('[data-new-news]').forEach((b) => (b.onclick = () => openNewsDialog(b.dataset.newNews, null, reload)));
+
+  if (isAdmin()) {
+    const entries = await api('/api/news/entries');
+    const el = document.getElementById('all-news');
+    el.innerHTML = `
+      <details class="card" style="margin-top:36px">
+        <summary>🗂️ Alle Einträge verwalten (${entries.length}) – auch vergangene und abgelaufene</summary>
+        <div class="user-list" style="margin-top:10px">
+          ${entries.map((n) => `
+            <div class="user-row">
+              <span>${n.type === 'event' ? esc(categoryOf(n).icon) : '📢'}</span>
+              <div class="grow"><b>${esc(n.title)}</b>
+                <span class="meta">${n.type === 'event' ? `Termin · ${esc(formatDate(n.date))}${n.repeatLabel ? ' · 🔁 ' + esc(n.repeatLabel) : ''}` : `Vermeldung · ab ${esc(formatDate(n.date))}${n.until ? ' bis ' + esc(formatDate(n.until)) : ''}`}</span></div>
+              <button class="icon-btn" data-news="${esc(n.id)}" aria-label="Bearbeiten">✏️</button>
+            </div>`).join('') || '<p class="meta">Noch nichts eingetragen.</p>'}
+        </div>
+      </details>`;
+    bindNews(el, entries, reload);
+  }
+}
+
+function openNewsDialog(type, entry, after) {
+  const isNew = !entry;
+  const e = entry || {};
+  const cats = state.eventCategories || {};
+  const isEvent = type === 'event';
+
+  const form = isEvent ? `
+    <h2>${isNew ? '📅 Neuer Termin' : '📅 Termin bearbeiten'}</h2>
+    <div class="form-grid">
+      <label class="full">Titel <input name="title" required maxlength="200" value="${esc(e.title)}" placeholder="z. B. Gemeindestunde, Orchesterprobe, Kindertag"></label>
+      <label>Art
+        <select name="category">${Object.entries(cats).map(([id, c]) =>
+          `<option value="${esc(id)}" ${id === (e.category || 'gottesdienst') ? 'selected' : ''}>${esc(c.icon)} ${esc(c.name)}</option>`).join('')}</select>
+      </label>
+      <label>Datum <input type="date" name="date" required value="${esc(e.date || localDate(new Date()))}"></label>
+      <label>Uhrzeit von <input type="time" name="time" value="${esc(e.time)}"></label>
+      <label>bis <small>optional</small><input type="time" name="endTime" value="${esc(e.endTime)}"></label>
+      <label class="full">Ort <small>optional</small><input name="location" maxlength="200" value="${esc(e.location)}" placeholder="z. B. Gemeindesaal"></label>
+      <label>Wiederholung <select name="repeat">${repeatOptions(e.date, e.repeat)}</select></label>
+      <label id="until-label">Wiederholen bis <small>leer = ohne Ende</small><input type="date" name="repeatUntil" value="${esc(e.repeatUntil)}"></label>
+      <label class="full">Beschreibung <small>optional</small><textarea name="text" maxlength="10000" rows="3">${esc(e.text)}</textarea></label>
+    </div>`
+  : `
+    <h2>${isNew ? '📢 Neue Vermeldung' : '📢 Vermeldung bearbeiten'}</h2>
+    <div class="form-grid">
+      <label class="full">Überschrift <input name="title" required maxlength="200" value="${esc(e.title)}" placeholder="z. B. Anmeldung zum Kindertag"></label>
+      <label class="full">Text <textarea name="text" maxlength="10000" rows="7">${esc(e.text)}</textarea></label>
+      <label>Anzeigen ab <input type="date" name="date" required value="${esc(e.date || localDate(new Date()))}"></label>
+      <label>Anzeigen bis <small>leer = 4 Wochen</small><input type="date" name="until" value="${esc(e.until)}"></label>
+      <label class="full check"><input type="checkbox" name="pinned" ${e.pinned ? 'checked' : ''}> Wichtig – oben hervorheben</label>
+    </div>`;
+
+  openDialog(`
+    <form id="news-form">
+      ${form}
+      <div class="row dialog-actions">
+        ${isNew ? '' : '<button type="button" class="btn danger" id="del-news">Löschen</button>'}
+        <span class="grow"></span>
+        <button type="button" class="btn secondary" data-close>Abbrechen</button>
+        <button class="btn">${isNew ? 'Eintragen' : 'Speichern'}</button>
+      </div>
+    </form>`, (d) => {
+    const f = d.querySelector('#news-form');
+    if (isEvent) {
+      const sync = () => (d.querySelector('#until-label').hidden = f.repeat.value === 'none');
+      f.date.addEventListener('change', () => {
+        const selected = f.repeat.value;
+        f.repeat.innerHTML = repeatOptions(f.date.value, selected);
+        sync();
+      });
+      f.repeat.addEventListener('change', sync);
+      sync();
+    }
+    f.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const body = { ...formData(f), type };
+      if (!isEvent) body.pinned = f.pinned.checked;
+      if (isEvent && body.repeat === 'none') body.repeatUntil = '';
+      try {
+        if (isNew) await api('/api/news', { method: 'POST', body });
+        else await api(`/api/news/${e.id}`, { method: 'PUT', body });
+        dialog.close();
+        toast(isNew ? 'Eingetragen ✓' : 'Gespeichert ✓');
+        if (after) after();
+        else location.hash = '#/aktuelles';
+      } catch (err) { toast(err.message, true); }
+    });
+    const del = d.querySelector('#del-news');
+    if (del) del.onclick = async () => {
+      const msg = isEvent && e.repeat !== 'none'
+        ? `„${e.title}“ mit allen Wiederholungen löschen?\n\nTipp: Einen einzelnen Tag kannst du stattdessen mit „Absagen“ streichen.`
+        : `„${e.title}“ wirklich löschen?`;
+      if (!confirm(msg)) return;
+      try {
+        await api(`/api/news/${e.id}`, { method: 'DELETE' });
+        dialog.close();
+        toast('Gelöscht');
+        if (after) after();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+}
+
 // ---------- Lightbox ----------
 
 const lb = { el: document.getElementById('lightbox'), images: [], index: 0 };
@@ -912,6 +1200,8 @@ lb.el.addEventListener('touchend', (e) => {
 function updateNav() {
   document.getElementById('topbar').hidden = false;
   document.getElementById('nav-admin').hidden = !isAdmin();
+  document.getElementById('bottom-admin').hidden = !isAdmin();
+  document.getElementById('bottomnav').hidden = false;
   document.getElementById('nav-upload').hidden = !isAdmin();
   document.getElementById('nav-user').textContent = '👤 ' + state.user.name.split(' ')[0];
 }
@@ -926,11 +1216,16 @@ document.getElementById('nav-upload').addEventListener('click', () => {
       <button class="choice" data-choice="upload"><span>⬆️</span>Bilder, Aufnahmen<br>oder Dokumente</button>
       <button class="choice" data-choice="text"><span>📝</span>Text schreiben</button>
       <button class="choice" data-choice="folder"><span>📁</span>Neuer Ordner</button>
+      <button class="choice" data-choice="event"><span>📅</span>Termin eintragen</button>
+      <button class="choice" data-choice="announcement"><span>📢</span>Vermeldung schreiben</button>
     </div>`, (d) => {
     d.querySelectorAll('[data-choice]').forEach((b) => b.addEventListener('click', () => {
       if (b.dataset.choice === 'upload') openUploadDialog(current, route);
       if (b.dataset.choice === 'text') openTextDialog(current, route);
       if (b.dataset.choice === 'folder') openFolderDialog({ parentId: current || null });
+      if (b.dataset.choice === 'event' || b.dataset.choice === 'announcement') {
+        openNewsDialog(b.dataset.choice, null, location.hash.startsWith('#/aktuelles') || location.hash === '' || location.hash === '#/' ? route : null);
+      }
     }));
   });
 });
@@ -952,6 +1247,7 @@ async function route() {
     if (!parts.length) await renderHome();
     else if (parts[0] === 'ordner' && parts[1]) await renderFolder(parts[1]);
     else if (parts[0] === 'suche') await renderSearch(params);
+    else if (parts[0] === 'aktuelles') await renderNews();
     else if (parts[0] === 'verwaltung') await renderAdmin();
     else if (parts[0] === 'konto') await renderAccount();
     else renderNotFound();
@@ -962,7 +1258,8 @@ async function route() {
 }
 
 async function start() {
-  await loadFolders();
+  const [, news] = await Promise.all([loadFolders(), api('/api/news')]);
+  state.eventCategories = news.categories;
   updateNav();
   route();
 }

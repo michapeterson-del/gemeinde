@@ -24,6 +24,15 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
   Bilder werden im Ordner nach Tagen gruppiert angezeigt.
 - **Bearbeiten**: Titel, Datum, Beschreibung ändern, in einen anderen Ordner verschieben, löschen,
   ein Bild als Ordnerbild festlegen.
+- **Aktuelles** (nur Admins tragen ein, alle sehen es – auch gleich auf der Startseite):
+  - **Termine** wie Gottesdienst, Gemeindestunde, Abendmahl, Bibelstunde, Kindertag, Jugend, Orchester, Chor …
+    mit Uhrzeit, Ort und Beschreibung
+  - **Wiederkehrende Termine**: jede Woche, alle 2 Wochen oder monatlich
+    (z. B. „Abendmahl jeden 1. Sonntag im Monat“) – optional mit Enddatum
+  - Einzelne Termine einer Reihe **absagen** („Fällt aus“), ohne die ganze Reihe zu löschen
+  - **Vermeldungen** mit „anzeigen ab / bis“ (ohne Enddatum 4 Wochen sichtbar),
+    wichtige Vermeldungen werden hervorgehoben
+  - Termine sortiert nach „Diese Woche“, „Nächste Woche“ und Monaten – und zum **Ausdrucken**
 - **Suche** über Titel, Texte, Prediger, Bibelstellen, Ordnernamen und Jahreszahlen.
 - Funktioniert auf Handy, Tablet und Computer und lässt sich auf dem Handy
   **zum Startbildschirm hinzufügen** – dann sieht sie aus wie eine App.
@@ -48,11 +57,12 @@ Unter **Verwaltung** legst du dann weitere Benutzer an.
 | `ADMIN_PASSWORD`  | Passwort für den ersten Admin `admin` (nur beim allerersten Start) | `gemeinde` |
 | `SESSION_SECRET`  | Geheimer Schlüssel, damit Anmeldungen einen Neustart überleben | zufällig |
 | `PORT`            | Port des Servers                                   | `3000`       |
+| `TZ`              | Zeitzone für „heute“ bei Terminen, z. B. `Europe/Berlin` | Server-Zeitzone |
 | `MAX_UPLOAD_MB`   | Maximale Größe pro Datei in MB                     | `2048`       |
 
 ## Wo liegen die Daten?
 
-- `data/db.json` – Ordner, Texte, Beschreibungen und Benutzer (Passwörter nur verschlüsselt)
+- `data/db.json` – Ordner, Texte, Termine, Vermeldungen, Beschreibungen und Benutzer (Passwörter nur verschlüsselt)
 - `uploads/` – die hochgeladenen Dateien, sortiert nach Jahr und Monat (z. B. `uploads/2026/08/`)
 
 **Für ein Backup einfach diese beiden Ordner sichern.**

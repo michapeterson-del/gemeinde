@@ -19,6 +19,7 @@
       <a href="#/" class="brand"><span class="brand-icon">⛪</span> <span class="brand-name">Gemeinde-Mediathek</span></a>
       <nav class="topnav">
         <a href="#/" data-nav="/">Start</a>
+        <a href="#/aktuelles" data-nav="/aktuelles">Aktuelles</a>
         <a href="#/suche" data-nav="/suche">Suche</a>
         <a href="#/verwaltung" data-nav="/verwaltung" id="nav-admin" hidden>Verwaltung</a>
         <button class="btn small" id="nav-upload" hidden>＋ Hinzufügen</button>
@@ -28,6 +29,14 @@
   </header>
 
   <main id="app" class="wrap" aria-live="polite"></main>
+
+  <nav class="bottomnav" id="bottomnav" hidden>
+    <a href="#/" data-nav="/"><span>🏠</span>Start</a>
+    <a href="#/aktuelles" data-nav="/aktuelles"><span>📢</span>Aktuelles</a>
+    <a href="#/suche" data-nav="/suche"><span>🔍</span>Suche</a>
+    <a href="#/verwaltung" data-nav="/verwaltung" id="bottom-admin" hidden><span>⚙️</span>Verwaltung</a>
+    <a href="#/konto" data-nav="/konto"><span>👤</span>Konto</a>
+  </nav>
 
   <div id="lightbox" class="lightbox" hidden>
     <button class="lb-btn lb-close" aria-label="Schließen">✕</button>
