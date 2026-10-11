@@ -361,7 +361,7 @@ details summary { cursor: pointer; font-weight: 600; margin: 12px 0 4px; }
 
 /* ---------- Startseite: Hauptbereiche & schlichte Ordner ---------- */
 
-.home-tiles { display: flex; flex-direction: column; gap: 12px; margin: 8px 0 12px; }
+.home-tiles { display: flex; flex-direction: column; gap: 12px; margin: 28px 0 12px; }
 .home-tile, .folder-grid .folder-tile {
   display: flex;
   align-items: center;

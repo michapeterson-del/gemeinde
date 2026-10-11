@@ -410,6 +410,8 @@ async function renderHome() {
       </form>
     </section>
 
+    <div id="news-preview">${newsPreview(news)}</div>
+
     <nav class="home-tiles" aria-label="Bereiche">
       ${tops.map((f) => `
         <a class="home-tile" href="#/ordner/${esc(f.id)}">
@@ -419,8 +421,6 @@ async function renderHome() {
         </a>`).join('')}
     </nav>
     ${isAdmin() ? '<p><button class="btn secondary small" id="new-folder">＋ Neuen Hauptbereich anlegen</button></p>' : ''}
-
-    <div id="news-preview">${newsPreview(news)}</div>
 
     <div id="prayer-preview">${prayerPreview(prayers)}</div>
   `;
