@@ -12,6 +12,8 @@ const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 
 const TYPE_ICON = { image: '🖼️', audio: '🎧', video: '🎬', document: '📄', text: '📝' };
 
 const isAdmin = () => state.user && state.user.role === 'admin';
+const isLeader = () => state.user && state.user.role === 'leader';
+const ROLE_LABEL = { admin: 'Admin', leader: 'Gemeindeleiter', member: 'Normal' };
 
 // ---------- Hilfsfunktionen ----------
 
@@ -531,7 +533,7 @@ async function renderAccount() {
     <h1>Mein Konto</h1>
     <div class="card">
       <p><b>${esc(state.user.name)}</b> <span class="meta">(${esc(state.user.username)})</span><br>
-      <span class="role ${esc(state.user.role)}">${state.user.role === 'admin' ? 'Admin' : 'Normal'}</span></p>
+      <span class="role ${esc(state.user.role)}">${esc(ROLE_LABEL[state.user.role] || state.user.role)}</span></p>
       <button class="btn secondary" id="logout">Abmelden</button>
     </div>
     <form class="card" id="pw" style="max-width:480px">
@@ -590,13 +592,17 @@ async function renderAdmin() {
 
     <section class="card">
       <h2>Benutzer</h2>
-      <p class="meta">Eigene Konten für Mitarbeiter. <b>Admin</b>: darf alles – Ordner anlegen, hochladen, Termine und Vermeldungen eintragen, Benutzer verwalten.<br><b>Normal</b>: darf nur ansehen (für Gemeindeglieder reicht meist das Gemeinde-Passwort oben).</p>
+      <p class="meta"><b>Admin</b>: Technik &amp; Inhalte – Ordner anlegen, hochladen, Termine und Vermeldungen eintragen, Benutzer verwalten.<br>
+      <b>Gemeindeleiter</b>: prüft und gibt Gebetsanliegen frei und sieht die Anliegen „nur für die Gemeindeleitung“.<br>
+      <b>Normal</b>: darf nur ansehen (für Gemeindeglieder reicht meist das Gemeinde-Passwort oben).</p>
+      ${users.some((u) => u.role === 'leader') ? '' : '<p class="storage-hint">ℹ️ Es gibt noch keinen <b>Gemeindeleiter</b>. Eingereichte Gebetsanliegen warten, bis ein Gemeindeleiter sie freigibt – bitte unten ein Konto mit dieser Rolle anlegen.</p>'}
       <div class="user-list">
         ${users.map((u) => `
           <div class="user-row">
             <div class="grow"><b>${esc(u.name)}</b> <span class="meta">${esc(u.username)}</span></div>
             <select data-role="${esc(u.id)}" aria-label="Rolle von ${esc(u.name)}">
               <option value="member" ${u.role === 'member' ? 'selected' : ''}>Normal</option>
+              <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>Gemeindeleiter</option>
               <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
             </select>
             <button class="btn small secondary" data-reset="${esc(u.id)}">🔑 Passwort</button>
@@ -609,7 +615,7 @@ async function renderAdmin() {
         <label>Benutzername <input name="username" required autocapitalize="none" placeholder="z. B. maria"></label>
         <label>Passwort <input name="password" required minlength="6" autocomplete="new-password"></label>
         <label>Rolle
-          <select name="role"><option value="member">Normal (nur ansehen)</option><option value="admin">Admin (darf alles)</option></select>
+          <select name="role"><option value="member">Normal (nur ansehen)</option><option value="leader">Gemeindeleiter (Gebetsanliegen prüfen)</option><option value="admin">Admin (Technik &amp; Inhalte)</option></select>
         </label>
         <div class="full"><button class="btn">Benutzer anlegen</button></div>
       </form>
@@ -643,6 +649,7 @@ async function renderAdmin() {
     try {
       await api(`/api/users/${sel.dataset.role}`, { method: 'PUT', body: { role: sel.value } });
       toast('Rolle geändert ✓');
+      renderAdmin();
     } catch (err) { toast(err.message, true); renderAdmin(); }
   }));
   app.querySelectorAll('[data-reset]').forEach((b) => (b.onclick = async () => {
@@ -1555,7 +1562,7 @@ function rememberPrayed(id) {
 function prayerCard(p, { compact = false } = {}) {
   const prayed = prayedSet().has(p.id);
   const who = p.name ? esc(p.name) : 'Anonym';
-  const admin = isAdmin() && !compact;
+  const admin = isLeader() && !compact;
   return `
     <article class="prayer${p.status === 'answered' ? ' answered' : ''}${p.status === 'pending' ? ' pending' : ''}">
       <div class="prayer-text">${esc(p.text)}</div>
@@ -1612,7 +1619,7 @@ function bindPrayers(container, prayers, reload) {
 
 function prayerPreview(prayers) {
   const active = prayers.filter((p) => p.status === 'active' && !p.private).slice(0, 3);
-  const pending = isAdmin() ? prayers.filter((p) => p.status === 'pending').length : 0;
+  const pending = isLeader() ? prayers.filter((p) => p.status === 'pending').length : 0;
   return `
     <section class="prayer-preview">
       <div class="row">
@@ -1639,9 +1646,9 @@ async function renderPrayers() {
     </div>
     <p class="meta">„Sorgt euch um nichts, sondern bringt in allen Dingen eure Anliegen … vor Gott.“ – Philipper 4,6</p>
 
-    ${isAdmin() && pending.length ? `
+    ${isLeader() && pending.length ? `
       <h2 class="section">Warten auf Freigabe (${pending.length})</h2>
-      <p class="meta">Nur Admins sehen diese Anliegen. Erst nach „Freigeben“ sind sie für die Gemeinde sichtbar.</p>
+      <p class="meta">Nur Gemeindeleiter sehen diese Anliegen. Erst nach „Freigeben“ sind sie für die Gemeinde sichtbar.</p>
       <div class="prayers">${pending.map((p) => prayerCard(p)).join('')}</div>` : ''}
 
     <h2 class="section">Aktuelle Anliegen</h2>
@@ -1665,7 +1672,7 @@ function openPrayerDialog(prayer, after) {
       <label>Name <small>optional – leer lassen, um anonym zu bleiben</small><input name="name" maxlength="100" value="${esc(p.name)}"></label>
       <label class="check"><input type="checkbox" name="private" ${p.private ? 'checked' : ''}> Nur für die Gemeindeleitung (nicht für alle sichtbar)</label>
       ${!isNew && p.status === 'answered' ? `<label>Wie hat Gott geantwortet? <small>optional</small><input name="answerNote" maxlength="1000" value="${esc(p.answerNote)}"></label>` : ''}
-      ${isNew && !isAdmin() ? '<p class="meta">Dein Anliegen wird nach einer kurzen Prüfung für die Gemeinde sichtbar.</p>' : ''}
+      ${isNew && !isLeader() && !isAdmin() ? '<p class="meta">Dein Anliegen wird nach einer kurzen Prüfung durch die Gemeindeleitung sichtbar.</p>' : ''}
       <div class="row dialog-actions"><span class="grow"></span>
         <button type="button" class="btn secondary" data-close>Abbrechen</button>
         <button class="btn">${isNew ? 'Einreichen' : 'Speichern'}</button>
@@ -1679,7 +1686,11 @@ function openPrayerDialog(prayer, after) {
         if (isNew) await api('/api/prayers', { method: 'POST', body });
         else await api(`/api/prayers/${p.id}`, { method: 'PUT', body });
         dialog.close();
-        toast(isNew ? (isAdmin() ? 'Gebetsanliegen veröffentlicht ✓' : 'Danke! Dein Anliegen wird nach Prüfung sichtbar 🙏') : 'Gespeichert ✓');
+        toast(isNew
+          ? (body.private ? 'Danke! Dein Anliegen ist bei der Gemeindeleitung angekommen 🙏'
+            : isLeader() || isAdmin() ? 'Gebetsanliegen veröffentlicht ✓'
+            : 'Danke! Dein Anliegen wird nach Prüfung durch die Gemeindeleitung sichtbar 🙏')
+          : 'Gespeichert ✓');
         if (after) after();
       } catch (err) { toast(err.message, true); }
     });

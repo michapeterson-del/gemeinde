@@ -376,44 +376,53 @@ test('Fehlversuche bei einem Konto sperren nicht die anderen', async () => {
   assert.equal((await req('POST', '/api/login', { body: { username: 'admin', password: 'geheim123' } })).status, 200);
 });
 
-test('Gebetsanliegen: einreichen, freigeben, mitbeten, erhört', async () => {
-  // Gemeinde-Zugang wieder einschalten und als Mitglied anmelden
+test('Gebetsanliegen: einreichen, Freigabe durch Gemeindeleiter, mitbeten, erhört', async () => {
+  // Gemeinde-Zugang einschalten, Mitglied und Gemeindeleiter anmelden
   await req('PUT', '/api/settings/member', { as: 'admin', body: { password: 'gebet-test-pw' } });
   await login('gemeinde', '', 'gebet-test-pw');
+  const created = await req('POST', '/api/users', { as: 'admin', body: { name: 'Pastor Klaus', username: 'klaus', password: 'klaus123', role: 'leader' } });
+  assert.equal(created.status, 201);
+  assert.equal((await created.json()).role, 'leader');
+  await login('leader', 'klaus', 'klaus123');
 
   assert.equal((await req('POST', '/api/prayers', { as: 'gemeinde', body: { text: '  ' } })).status, 400);
   const fromMember = await (await req('POST', '/api/prayers', { as: 'gemeinde', body: { text: 'Bitte betet für meine Mutter im Krankenhaus.', name: 'Anna' } })).json();
   assert.equal(fromMember.status, 'pending');
   const secret = await (await req('POST', '/api/prayers', { as: 'gemeinde', body: { text: 'Persönliches Anliegen', private: true } })).json();
 
-  // Mitglieder sehen noch nichts davon (wartet auf Freigabe / privat)
-  let list = await (await req('GET', '/api/prayers', { as: 'gemeinde' })).json();
-  assert.equal(list.length, 0);
-  // Mitbeten geht erst nach Freigabe
+  // Mitglieder und Admins sehen nichts davon
+  assert.equal((await (await req('GET', '/api/prayers', { as: 'gemeinde' })).json()).length, 0);
+  assert.equal((await (await req('GET', '/api/prayers', { as: 'admin' })).json()).length, 0);
   assert.equal((await req('POST', `/api/prayers/${fromMember.id}/pray`, { as: 'gemeinde' })).status, 404);
 
-  // Admin sieht alles und gibt frei
-  list = await (await req('GET', '/api/prayers', { as: 'admin' })).json();
-  assert.equal(list.length, 2);
+  // Nur der Gemeindeleiter sieht alles und darf freigeben
+  const leaderList = await (await req('GET', '/api/prayers', { as: 'leader' })).json();
+  assert.deepEqual(leaderList.map((p) => p.id).sort(), [fromMember.id, secret.id].sort());
   assert.equal((await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'gemeinde', body: { status: 'active' } })).status, 403);
-  assert.equal((await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'admin', body: { status: 'active' } })).status, 200);
-  await req('PUT', `/api/prayers/${secret.id}`, { as: 'admin', body: { status: 'active' } });
+  assert.equal((await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'admin', body: { status: 'active' } })).status, 403);
+  assert.equal((await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'leader', body: { status: 'active' } })).status, 200);
 
-  list = await (await req('GET', '/api/prayers', { as: 'gemeinde' })).json();
-  assert.deepEqual(list.map((p) => p.id), [fromMember.id]); // privat bleibt verborgen
+  // Privates bleibt für alle außer Gemeindeleitern verborgen
+  let list = await (await req('GET', '/api/prayers', { as: 'gemeinde' })).json();
+  assert.deepEqual(list.map((p) => p.id), [fromMember.id]);
+  list = await (await req('GET', '/api/prayers', { as: 'admin' })).json();
+  assert.deepEqual(list.map((p) => p.id), [fromMember.id]);
 
   const pray = await (await req('POST', `/api/prayers/${fromMember.id}/pray`, { as: 'gemeinde' })).json();
   assert.equal(pray.prayCount, 1);
 
-  // Anliegen vom Admin ist sofort sichtbar
+  // Anliegen von Admin oder Gemeindeleiter ist sofort sichtbar
   const fromAdmin = await (await req('POST', '/api/prayers', { as: 'admin', body: { text: 'Für die Jugendfreizeit' } })).json();
   assert.equal(fromAdmin.status, 'active');
 
-  // Erhört markieren
-  const answered = await (await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'admin', body: { status: 'answered', answerNote: 'Die OP ist gut verlaufen!' } })).json();
+  const answered = await (await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'leader', body: { status: 'answered', answerNote: 'Die OP ist gut verlaufen!' } })).json();
   assert.equal(answered.status, 'answered');
   assert.ok(answered.answeredAt);
 
-  assert.equal((await req('DELETE', `/api/prayers/${fromAdmin.id}`, { as: 'gemeinde' })).status, 403);
-  assert.equal((await req('DELETE', `/api/prayers/${fromAdmin.id}`, { as: 'admin' })).status, 200);
+  assert.equal((await req('DELETE', `/api/prayers/${fromAdmin.id}`, { as: 'admin' })).status, 403);
+  assert.equal((await req('DELETE', `/api/prayers/${fromAdmin.id}`, { as: 'leader' })).status, 200);
+
+  // Gemeindeleiter dürfen keine Inhalte/Benutzer verwalten
+  assert.equal((await req('POST', '/api/folders', { as: 'leader', body: { name: 'X' } })).status, 403);
+  assert.equal((await req('GET', '/api/users', { as: 'leader' })).status, 403);
 });

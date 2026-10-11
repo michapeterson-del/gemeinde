@@ -11,6 +11,8 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
     ändern (dann werden alle abgemeldet) oder ausschalten.
   - **Admin** (eigenes Konto mit Benutzername): darf alles – Ordner anlegen, hochladen, Termine und
     Vermeldungen eintragen, Benutzer verwalten
+  - **Gemeindeleiter** (eigenes Konto): prüft und gibt Gebetsanliegen frei, sieht die Anliegen
+    „nur für die Gemeindeleitung“ – darf aber nichts hochladen oder verwalten
   - Optional auch eigene Konten mit Rolle **Normal**
   - Ohne Anmeldung ist nichts zu sehen (auch die Bilder nicht) – gut für den Datenschutz.
 - **Ordner, beliebig verschachtelt** – z. B. *Bilder › Jugend › Jugendfreizeit › Edersee 2026*.
@@ -41,7 +43,7 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
     wichtige Vermeldungen werden hervorgehoben
   - Termine sortiert nach „Diese Woche“, „Nächste Woche“ und Monaten – und zum **Ausdrucken**
 - **Gebetsanliegen**: Alle Angemeldeten können Anliegen einreichen – mit Namen oder anonym, auf Wunsch nur für die
-  Gemeindeleitung sichtbar. Anliegen von Mitgliedern erscheinen erst nach Freigabe durch einen Admin.
+  Gemeindeleitung sichtbar. Anliegen von Mitgliedern erscheinen erst nach Freigabe durch einen **Gemeindeleiter**.
   „🙏 Ich bete mit“ zeigt, wie viele mitbeten; erhörte Gebete können mit einer kurzen Notiz markiert werden.
 - **Suche** über Titel, Texte, Prediger, Bibelstellen, Ordnernamen und Jahreszahlen.
 - Funktioniert auf Handy, Tablet und Computer und lässt sich auf dem Handy
