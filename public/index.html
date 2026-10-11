@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gemeinde-Mediathek</title>
+  <meta name="description" content="Bilder, Gottesdienstaufnahmen und Videos unserer Gemeinde.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛪</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a href="#/" class="brand"><span class="brand-icon">⛪</span> <span id="site-name">Gemeinde-Mediathek</span></a>
+      <nav class="topnav">
+        <a href="#/">Start</a>
+        <a href="#/suche">Suche</a>
+        <a href="#/verwaltung" id="admin-link">Anmelden</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app" class="wrap" aria-live="polite"></main>
+
+  <footer class="footer">
+    <div class="wrap">Mit Liebe für unsere Gemeinde gemacht.</div>
+  </footer>
+
+  <div id="lightbox" class="lightbox" hidden>
+    <button class="lb-btn lb-close" aria-label="Schließen">✕</button>
+    <button class="lb-btn lb-prev" aria-label="Vorheriges Bild">‹</button>
+    <figure>
+      <img alt="">
+      <figcaption></figcaption>
+    </figure>
+    <button class="lb-btn lb-next" aria-label="Nächstes Bild">›</button>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
