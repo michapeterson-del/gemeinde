@@ -291,3 +291,47 @@ test('Hochladen in Stücken (z. B. ganzer Gottesdienst als M4A)', async () => {
 
   assert.equal((await req('POST', `/api/uploads/${id}/complete`, { as: 'admin' })).status, 404);
 });
+
+test('ADMIN_PASSWORD_RESET wirkt nur einmal – spätere Passwortänderungen bleiben erhalten', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemeinde-reset2-'));
+  const opts = { dataDir: path.join(dir, 'data'), uploadDir: path.join(dir, 'uploads'), adminPassword: 'erstes-pw', sessionSecret: 's' };
+  const start = async (extra) => {
+    const app = createApp({ ...opts, ...extra });
+    return new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+  };
+  const loginAt = (srv, password) => fetch(`http://127.0.0.1:${srv.address().port}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password }),
+  });
+
+  let srv = await start({ adminPasswordReset: 'reset-pw-1' });
+  const res = await loginAt(srv, 'reset-pw-1');
+  assert.equal(res.status, 200);
+  const cookie = res.headers.get('set-cookie').split(';')[0];
+  // Admin ändert sein Passwort in der App
+  const ch = await fetch(`http://127.0.0.1:${srv.address().port}/api/me/password`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ current: 'reset-pw-1', password: 'eigenes-pw' }),
+  });
+  assert.equal(ch.status, 200);
+  srv.close();
+
+  // Neustart (Update) mit noch gesetzter Variable → eigenes Passwort bleibt gültig
+  srv = await start({ adminPasswordReset: 'reset-pw-1' });
+  assert.equal((await loginAt(srv, 'eigenes-pw')).status, 200);
+  assert.equal((await loginAt(srv, 'reset-pw-1')).status, 401);
+  srv.close();
+
+  // Ein NEUER Wert wird wieder angewendet
+  srv = await start({ adminPasswordReset: 'reset-pw-2' });
+  assert.equal((await loginAt(srv, 'reset-pw-2')).status, 200);
+  srv.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Fehlversuche bei einem Konto sperren nicht die anderen', async () => {
+  for (let i = 0; i < 10; i++) {
+    await req('POST', '/api/login', { body: { username: 'jemand', password: 'falsch-' + i } });
+  }
+  assert.equal((await req('POST', '/api/login', { body: { username: 'jemand', password: 'x' } })).status, 429);
+  // Admin kann sich trotzdem anmelden
+  assert.equal((await req('POST', '/api/login', { body: { username: 'admin', password: 'geheim123' } })).status, 200);
+});

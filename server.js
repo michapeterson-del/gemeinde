@@ -62,8 +62,11 @@ function createApp({
   if (adminPasswordReset) {
     // Notfall: Passwort vergessen → ADMIN_PASSWORD_RESET setzen, neu starten, anmelden, Variable wieder löschen.
     try {
-      store.resetAdmin(adminPasswordReset);
-      console.warn('⚠️  Das Passwort des Benutzers "admin" wurde über ADMIN_PASSWORD_RESET zurückgesetzt. Bitte die Variable jetzt wieder entfernen!');
+      if (store.applyAdminReset(adminPasswordReset)) {
+        console.warn('⚠️  Das Passwort des Benutzers "admin" wurde über ADMIN_PASSWORD_RESET zurückgesetzt. Bitte die Variable jetzt wieder entfernen!');
+      } else {
+        console.log('ℹ️  ADMIN_PASSWORD_RESET wurde schon früher angewendet und wird ignoriert. Die Variable kann gelöscht werden.');
+      }
     } catch (err) {
       console.error(`❌ ADMIN_PASSWORD_RESET wurde nicht übernommen: ${err.message}`);
     }
@@ -118,8 +121,17 @@ function createApp({
     return Math.ceil((list[list.length - 10] + LOCK_MS - now) / 1000);
   }
 
+  // Echte Besucher-IP (hinter Render/Cloudflare) – und pro Konto zählen,
+  // damit sich nicht alle gegenseitig aussperren.
+  const attemptKey = (req) => {
+    const ip = req.headers['cf-connecting-ip'] || req.headers['true-client-ip'] || req.ip;
+    const account = String((req.body && req.body.username) || 'gemeinde').trim().toLowerCase();
+    return `${ip}|${account}`;
+  };
+
   app.post('/api/login', (req, res) => {
-    const wait = lockedSeconds(req.ip);
+    const key = attemptKey(req);
+    const wait = lockedSeconds(key);
     if (wait) {
       const min = Math.ceil(wait / 60);
       return res.status(429).json({ error: `Zu viele Fehlversuche. Bitte in ${min} ${min === 1 ? 'Minute' : 'Minuten'} erneut probieren.` });
@@ -128,12 +140,12 @@ function createApp({
     // Ohne Benutzername: Anmeldung mit dem gemeinsamen Gemeinde-Passwort.
     const user = username ? store.authenticate(username, password) : store.authenticateMember(password);
     if (!user) {
-      failures.get(req.ip).push(Date.now());
+      failures.get(key).push(Date.now());
       return res.status(401).json({
         error: username ? 'Benutzername oder Passwort ist falsch.' : 'Das Gemeinde-Passwort ist falsch.',
       });
     }
-    failures.delete(req.ip);
+    failures.delete(key);
     const secure = req.secure ? '; Secure' : '';
     res.setHeader(
       'Set-Cookie',
