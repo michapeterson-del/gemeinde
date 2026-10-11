@@ -178,10 +178,10 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
   const docs = items.filter((i) => i.type === 'document');
   const html = [];
 
-  if (media.length && sermons) {
-    html.push(`<h2 class="section">⛪ Gottesdienste</h2>${serviceList(media, showPath)}`);
+  if (media.length && (sermons || showPath)) {
+    html.push(`<h2 class="section">${sermons ? 'Gottesdienste' : 'Aufnahmen'}</h2>${serviceList(media, showPath)}`);
   } else if (media.length) {
-    html.push('<h2 class="section">🎧 Aufnahmen & Videos</h2><div class="players">');
+    html.push('<h2 class="section">Aufnahmen & Videos</h2><div class="players">');
     for (const m of media) {
       const details = [formatDuration(m.duration) && `⏱ ${formatDuration(m.duration)}`, m.speaker && `🎤 ${esc(m.speaker)}`, m.bibleText && `📖 ${esc(m.bibleText)}`].filter(Boolean).join(' · ');
       html.push(`
@@ -206,7 +206,7 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
   }
 
   if (texts.length) {
-    html.push('<h2 class="section">📝 Texte</h2><div class="texts">');
+    html.push('<h2 class="section">Texte</h2><div class="texts">');
     for (const t of texts) {
       html.push(`
         <article class="text-card">
@@ -219,7 +219,7 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
   }
 
   if (images.length) {
-    html.push('<h2 class="section">📷 Bilder</h2>');
+    html.push('<h2 class="section">Bilder</h2>');
     // Bilder nach Datum gruppieren
     const groups = new Map();
     for (const img of images) {
@@ -243,7 +243,7 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
   }
 
   if (docs.length) {
-    html.push('<h2 class="section">📄 Dokumente</h2><div class="doc-list">');
+    html.push('<h2 class="section">Dokumente</h2><div class="doc-list">');
     for (const d of docs) {
       html.push(`
         <div class="doc-row">
@@ -268,12 +268,13 @@ function serviceList(list, showPath) {
   const groups = [];
   for (const m of list) {
     const d = parseDate(m.date);
-    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    // Auf Startseite/Suche (showPath) einfache Liste ohne Monatsüberschriften
+    const label = showPath ? '' : `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
     if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, items: [] });
     groups[groups.length - 1].items.push(m);
   }
   return groups.map((g) => `
-    <h3 class="date-head">${esc(g.label)}</h3>
+    ${g.label ? `<h3 class="date-head">${esc(g.label)}</h3>` : ''}
     <div class="services">${g.items.map((m) => {
       const details = [
         WEEKDAYS[parseDate(m.date).getDay()],
@@ -381,10 +382,11 @@ async function renderLogin(mode) {
 // ---------- Seiten ----------
 
 async function renderHome() {
-  const [{ children }, recent, news] = await Promise.all([
+  const [{ children }, recent, news, prayers] = await Promise.all([
     api('/api/folders/root'),
-    api('/api/items?sort=recent&limit=24'),
+    api('/api/items?sort=recent&limit=12'),
     api('/api/news'),
+    api('/api/prayers').catch(() => []),
   ]);
   state.eventCategories = news.categories;
   const hour = new Date().getHours();
@@ -392,7 +394,7 @@ async function renderHome() {
 
   app.innerHTML = `
     <section class="hero">
-      <h1>${state.user.shared ? 'Herzlich willkommen!' : `${greeting}, ${esc(state.user.name)}!`} 👋</h1>
+      <h1>${state.user.shared ? 'Herzlich willkommen!' : `${greeting}, ${esc(state.user.name)}!`}</h1>
       <p>Bilder, Gottesdienste und Erinnerungen aus unserem Gemeindeleben – alles an einem Ort.</p>
       <form id="hero-search" role="search">
         <input name="q" placeholder="Suche nach Predigt, Bibelstelle, Freizeit …" aria-label="Suche">
@@ -402,13 +404,15 @@ async function renderHome() {
 
     <div id="news-preview">${newsPreview(news)}</div>
 
+    <div id="prayer-preview">${prayerPreview(prayers)}</div>
+
     <div class="row">
-      <h2 class="section grow">📁 Ordner</h2>
+      <h2 class="section grow">Ordner</h2>
       ${isAdmin() ? '<button class="btn secondary small" id="new-folder">＋ Neuer Ordner</button>' : ''}
     </div>
     <div class="folder-grid">${children.map(folderTile).join('')}</div>
 
-    ${recent.length ? `<h2 class="section" style="margin-top:40px">✨ Neu hinzugefügt</h2><div id="recent">${renderItems(recent, { showPath: true })}</div>` : ''}
+    ${recent.length ? `<h2 class="section" style="margin-top:40px">Neu hinzugefügt</h2><div id="recent">${renderItems(recent, { showPath: true })}</div>` : ''}
   `;
 
   document.getElementById('hero-search').addEventListener('submit', (e) => {
@@ -419,6 +423,9 @@ async function renderHome() {
   const preview = document.getElementById('news-preview');
   bindNews(preview, news, renderHome);
   preview.querySelectorAll('[data-new-news]').forEach((b) => (b.onclick = () => openNewsDialog(b.dataset.newNews, null, renderHome)));
+  const pp = document.getElementById('prayer-preview');
+  bindPrayers(pp, prayers, renderHome);
+  pp.querySelectorAll('[data-new-prayer]').forEach((b) => (b.onclick = () => openPrayerDialog(null, renderHome)));
   if (recent.length) bindItems(document.getElementById('recent'), recent, renderHome);
 }
 
@@ -482,7 +489,7 @@ async function renderSearch(params) {
     results.innerHTML = '<div class="empty"><div class="big">🤷</div>Nichts gefunden.</div>';
   } else {
     results.innerHTML = `
-      ${result.folders.length ? `<h2 class="section">📁 Ordner</h2><div class="folder-grid">${result.folders.map(folderTile).join('')}</div>` : ''}
+      ${result.folders.length ? `<h2 class="section">Ordner</h2><div class="folder-grid">${result.folders.map(folderTile).join('')}</div>` : ''}
       ${renderItems(result.items, { showPath: true })}`;
     bindItems(results, result.items, () => renderSearch(params));
   }
@@ -553,7 +560,7 @@ async function renderAdmin() {
     <h1>Verwaltung</h1>
 
     <section class="card" id="member-card">
-      <h2>🔑 Gemeinde-Passwort</h2>
+      <h2>Gemeinde-Passwort</h2>
       <p class="meta">Mit diesem <b>einen</b> Passwort melden sich alle Gemeindeglieder an. Sie können alles ansehen und anhören, aber nichts ändern.</p>
       <p>Status: ${member.enabled ? '<b class="ok-text">✅ aktiv</b>' : '<b class="off-text">⛔ noch nicht eingerichtet</b>'}</p>
       <form id="member-form" class="row">
@@ -568,13 +575,13 @@ async function renderAdmin() {
     ${storageCard(storage)}
 
     <section class="card">
-      <div class="row"><h2 class="grow">📁 Ordnerstruktur</h2><button class="btn small" id="new-root">＋ Neuer Hauptordner</button></div>
+      <div class="row"><h2 class="grow">Ordnerstruktur</h2><button class="btn small" id="new-root">＋ Neuer Hauptordner</button></div>
       <p class="meta">Hier legst du fest, wie alles sortiert ist – z. B. Bilder › Jugend › Jugendfreizeit. Ordner kannst du beliebig ineinander verschachteln und später verschieben.</p>
       <div class="tree">${tree || '<p class="meta">Noch keine Ordner.</p>'}</div>
     </section>
 
     <section class="card">
-      <h2>👥 Benutzer</h2>
+      <h2>Benutzer</h2>
       <p class="meta">Eigene Konten für Mitarbeiter. <b>Admin</b>: darf alles – Ordner anlegen, hochladen, Termine und Vermeldungen eintragen, Benutzer verwalten.<br><b>Normal</b>: darf nur ansehen (für Gemeindeglieder reicht meist das Gemeinde-Passwort oben).</p>
       <div class="user-list">
         ${users.map((u) => `
@@ -681,7 +688,7 @@ function storageCardInner(st) {
     `<div class="storage-row"><span>${icon} ${label}</span><span class="meta">${st.byType[t].count} ${st.byType[t].count === 1 ? 'Datei' : 'Dateien'} · ${esc(formatSize(st.byType[t].size))}</span></div>`).join('');
 
   if (st.total === null) {
-    return `<section class="card"><h2>💾 Speicher</h2>${rows || '<p class="meta">Noch keine Dateien hochgeladen.</p>'}</section>`;
+    return `<section class="card"><h2>Speicher</h2>${rows || '<p class="meta">Noch keine Dateien hochgeladen.</p>'}</section>`;
   }
   const pct = Math.min(100, Math.round((st.used / st.total) * 100));
   const level = pct >= 90 ? 'full' : pct >= 75 ? 'warn' : 'ok';
@@ -691,7 +698,7 @@ function storageCardInner(st) {
   const more = Math.max(0, Math.floor(st.free / avg));
   return `
     <section class="card">
-      <h2>💾 Speicher</h2>
+      <h2>Speicher</h2>
       <div class="storage-head"><b>${esc(formatSize(st.used))}</b> von ${esc(formatSize(st.total))} belegt <span class="meta">(${pct} %)</span></div>
       <div class="storage-bar ${level}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
       <p class="meta">Noch frei: ${esc(formatSize(st.free))} – Platz für ca. <b>${more.toLocaleString('de-DE')}</b> weitere Gottesdienste (je ca. ${esc(formatSize(avg))}).</p>
@@ -724,7 +731,6 @@ function openFolderDialog(folder, after) {
           </select>
         </label>
         <label>Symbol <small>ein Emoji</small><input name="icon" maxlength="8" value="${esc(folder.icon || '📁')}"></label>
-        <label>Farbe <input type="color" name="color" value="${esc(folder.color || (parent && parent.color) || '#7c5cbf')}"></label>
         <label class="full">Beschreibung <small>optional</small><textarea name="description" maxlength="1000">${esc(folder.description)}</textarea></label>
       </div>
       <div class="row dialog-actions">
@@ -1367,11 +1373,11 @@ function newsPreview(news) {
   }
   return `
     <section class="news-preview">
-      <div class="row"><h2 class="section grow">📢 Aktuelles</h2><a href="#/aktuelles">Alle Termine & Vermeldungen →</a></div>
+      <div class="row"><h2 class="section grow">Aktuelles</h2><a href="#/aktuelles">Alle Termine & Vermeldungen →</a></div>
       <div class="news-columns">
         ${news.announcements.length ? `<div class="announcements">${news.announcements.slice(0, 3).map(announcementCard).join('')}
           ${news.announcements.length > 3 ? `<a href="#/aktuelles" class="meta">+ ${news.announcements.length - 3} weitere Vermeldungen</a>` : ''}</div>` : ''}
-        ${upcoming.length ? `<div><h3 class="sub-head">📅 Nächste Termine</h3><div class="events">${upcoming.map((e) => eventRow(e, news.today)).join('')}</div></div>` : ''}
+        ${upcoming.length ? `<div><h3 class="sub-head">Nächste Termine</h3><div class="events">${upcoming.map((e) => eventRow(e, news.today)).join('')}</div></div>` : ''}
       </div>
     </section>`;
 }
@@ -1383,8 +1389,8 @@ async function renderNews(days = 42) {
   const reload = () => renderNews(days);
 
   app.innerHTML = `
-    <div class="row">
-      <h1 class="grow">📢 Aktuelles</h1>
+    <div class="row page-head">
+      <h1 class="grow">Aktuelles</h1>
       <button class="btn secondary small no-print" onclick="window.print()">🖨️ Drucken</button>
     </div>
     ${isAdmin() ? `
@@ -1520,6 +1526,158 @@ function openNewsDialog(type, entry, after) {
   });
 }
 
+// ---------- Gebetsanliegen ----------
+
+// Merkt sich auf diesem Gerät, für welche Anliegen man schon „Ich bete mit“ gedrückt hat.
+function prayedSet() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('prayed') || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+function rememberPrayed(id) {
+  try {
+    const set = prayedSet();
+    set.add(id);
+    localStorage.setItem('prayed', JSON.stringify([...set].slice(-500)));
+  } catch {}
+}
+
+function prayerCard(p, { compact = false } = {}) {
+  const prayed = prayedSet().has(p.id);
+  const who = p.name ? esc(p.name) : 'Anonym';
+  const admin = isAdmin() && !compact;
+  return `
+    <article class="prayer${p.status === 'answered' ? ' answered' : ''}${p.status === 'pending' ? ' pending' : ''}">
+      <div class="prayer-text">${esc(p.text)}</div>
+      <div class="meta">${who} · ${esc(formatDate(p.createdAt.slice(0, 10)))}${p.private ? ' · 🔒 nur für die Gemeindeleitung' : ''}</div>
+      ${p.status === 'answered' ? `<div class="answer">🙌 <b>Gebet erhört</b>${p.answerNote ? ' – ' + esc(p.answerNote) : ''}</div>` : ''}
+      <div class="prayer-actions">
+        ${p.status === 'answered' ? (p.prayCount ? `<span class="meta">🙏 ${p.prayCount} ${p.prayCount === 1 ? 'Person hat' : 'Personen haben'} mitgebetet</span>` : '') : ''}
+        ${p.status !== 'active' ? '' : `<button class="btn small ${prayed ? 'secondary' : ''}" data-pray="${esc(p.id)}" ${prayed ? 'disabled' : ''}>
+          🙏 ${prayed ? 'Du betest mit' : 'Ich bete mit'}${p.prayCount ? ` · ${p.prayCount}` : ''}</button>`}
+        ${admin && p.status === 'pending' ? `<button class="btn small" data-approve="${esc(p.id)}">✓ Freigeben</button>` : ''}
+        ${admin && p.status === 'active' ? `<button class="btn small secondary" data-answered="${esc(p.id)}">🙌 Erhört</button>` : ''}
+        ${admin ? `<button class="icon-btn" data-edit-prayer="${esc(p.id)}" aria-label="Bearbeiten">✏️</button>` : ''}
+        ${admin ? `<button class="icon-btn" data-delete-prayer="${esc(p.id)}" aria-label="Löschen">🗑️</button>` : ''}
+      </div>
+    </article>`;
+}
+
+function bindPrayers(container, prayers, reload) {
+  const find = (id) => prayers.find((p) => p.id === id);
+  container.querySelectorAll('[data-pray]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      const { prayCount } = await api(`/api/prayers/${b.dataset.pray}/pray`, { method: 'POST' });
+      rememberPrayed(b.dataset.pray);
+      b.disabled = true;
+      b.classList.add('secondary');
+      b.textContent = `🙏 Du betest mit · ${prayCount}`;
+    } catch (err) { toast(err.message, true); }
+  }));
+  container.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      await api(`/api/prayers/${b.dataset.approve}`, { method: 'PUT', body: { status: 'active' } });
+      toast('Freigegeben ✓');
+      reload();
+    } catch (err) { toast(err.message, true); }
+  }));
+  container.querySelectorAll('[data-answered]').forEach((b) => b.addEventListener('click', async () => {
+    const note = prompt('Gebet erhört! 🙌\nMöchtest du kurz dazuschreiben, wie Gott geantwortet hat? (optional)', '');
+    if (note === null) return;
+    try {
+      await api(`/api/prayers/${b.dataset.answered}`, { method: 'PUT', body: { status: 'answered', answerNote: note } });
+      toast('Als erhört markiert 🙌');
+      reload();
+    } catch (err) { toast(err.message, true); }
+  }));
+  container.querySelectorAll('[data-edit-prayer]').forEach((b) => b.addEventListener('click', () => openPrayerDialog(find(b.dataset.editPrayer), reload)));
+  container.querySelectorAll('[data-delete-prayer]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Dieses Gebetsanliegen löschen?')) return;
+    try {
+      await api(`/api/prayers/${b.dataset.deletePrayer}`, { method: 'DELETE' });
+      reload();
+    } catch (err) { toast(err.message, true); }
+  }));
+}
+
+function prayerPreview(prayers) {
+  const active = prayers.filter((p) => p.status === 'active' && !p.private).slice(0, 3);
+  const pending = isAdmin() ? prayers.filter((p) => p.status === 'pending').length : 0;
+  return `
+    <section class="prayer-preview">
+      <div class="row">
+        <h2 class="section grow">Gebetsanliegen</h2>
+        <a href="#/gebet">Alle anzeigen →</a>
+      </div>
+      ${pending ? `<p class="pending-note"><a href="#/gebet">${pending} ${pending === 1 ? 'neues Anliegen wartet' : 'neue Anliegen warten'} auf Freigabe →</a></p>` : ''}
+      ${active.length ? `<div class="prayers">${active.map((p) => prayerCard(p, { compact: true })).join('')}</div>` : '<p class="meta">Zurzeit keine Gebetsanliegen.</p>'}
+      <button class="btn secondary small" data-new-prayer style="margin-top:10px">＋ Gebetsanliegen einreichen</button>
+    </section>`;
+}
+
+async function renderPrayers() {
+  const prayers = await api('/api/prayers');
+  const reload = () => renderPrayers();
+  const pending = prayers.filter((p) => p.status === 'pending');
+  const active = prayers.filter((p) => p.status === 'active');
+  const answered = prayers.filter((p) => p.status === 'answered');
+
+  app.innerHTML = `
+    <div class="row page-head">
+      <h1 class="grow">Gebetsanliegen</h1>
+      <button class="btn" data-new-prayer>＋ Anliegen einreichen</button>
+    </div>
+    <p class="meta">„Sorgt euch um nichts, sondern bringt in allen Dingen eure Anliegen … vor Gott.“ – Philipper 4,6</p>
+
+    ${isAdmin() && pending.length ? `
+      <h2 class="section">Warten auf Freigabe (${pending.length})</h2>
+      <p class="meta">Nur Admins sehen diese Anliegen. Erst nach „Freigeben“ sind sie für die Gemeinde sichtbar.</p>
+      <div class="prayers">${pending.map((p) => prayerCard(p)).join('')}</div>` : ''}
+
+    <h2 class="section">Aktuelle Anliegen</h2>
+    ${active.length ? `<div class="prayers">${active.map((p) => prayerCard(p)).join('')}</div>` : '<p class="meta">Zurzeit keine Gebetsanliegen.</p>'}
+
+    ${answered.length ? `
+      <h2 class="section">Erhörte Gebete</h2>
+      <div class="prayers">${answered.map((p) => prayerCard(p)).join('')}</div>` : ''}
+  `;
+  bindPrayers(app, prayers, reload);
+  app.querySelectorAll('[data-new-prayer]').forEach((b) => (b.onclick = () => openPrayerDialog(null, reload)));
+}
+
+function openPrayerDialog(prayer, after) {
+  const isNew = !prayer;
+  const p = prayer || {};
+  openDialog(`
+    <form id="prayer-form">
+      <h2>🙏 ${isNew ? 'Gebetsanliegen einreichen' : 'Gebetsanliegen bearbeiten'}</h2>
+      <label>Anliegen <textarea name="text" rows="6" maxlength="2000" required placeholder="Wofür sollen wir beten?">${esc(p.text)}</textarea></label>
+      <label>Name <small>optional – leer lassen, um anonym zu bleiben</small><input name="name" maxlength="100" value="${esc(p.name)}"></label>
+      <label class="check"><input type="checkbox" name="private" ${p.private ? 'checked' : ''}> Nur für die Gemeindeleitung (nicht für alle sichtbar)</label>
+      ${!isNew && p.status === 'answered' ? `<label>Wie hat Gott geantwortet? <small>optional</small><input name="answerNote" maxlength="1000" value="${esc(p.answerNote)}"></label>` : ''}
+      ${isNew && !isAdmin() ? '<p class="meta">Dein Anliegen wird nach einer kurzen Prüfung für die Gemeinde sichtbar.</p>' : ''}
+      <div class="row dialog-actions"><span class="grow"></span>
+        <button type="button" class="btn secondary" data-close>Abbrechen</button>
+        <button class="btn">${isNew ? 'Einreichen' : 'Speichern'}</button>
+      </div>
+    </form>`, (d) => {
+    d.querySelector('#prayer-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = formData(e.target);
+      body.private = e.target.private.checked;
+      try {
+        if (isNew) await api('/api/prayers', { method: 'POST', body });
+        else await api(`/api/prayers/${p.id}`, { method: 'PUT', body });
+        dialog.close();
+        toast(isNew ? (isAdmin() ? 'Gebetsanliegen veröffentlicht ✓' : 'Danke! Dein Anliegen wird nach Prüfung sichtbar 🙏') : 'Gespeichert ✓');
+        if (after) after();
+      } catch (err) { toast(err.message, true); }
+    });
+  });
+}
+
 // ---------- Lightbox ----------
 
 const lb = { el: document.getElementById('lightbox'), images: [], index: 0 };
@@ -1587,10 +1745,12 @@ document.getElementById('nav-upload').addEventListener('click', () => {
       <button class="choice" data-choice="folder"><span>📁</span>Neuer Ordner</button>
       <button class="choice" data-choice="event"><span>📅</span>Termin eintragen</button>
       <button class="choice" data-choice="announcement"><span>📢</span>Vermeldung schreiben</button>
+      <button class="choice" data-choice="prayer"><span>🙏</span>Gebetsanliegen</button>
     </div>`, (d) => {
     d.querySelectorAll('[data-choice]').forEach((b) => b.addEventListener('click', () => {
       if (b.dataset.choice === 'upload') openUploadDialog(current, route);
       if (b.dataset.choice === 'folder') openFolderDialog({ parentId: current || null });
+      if (b.dataset.choice === 'prayer') openPrayerDialog(null, () => { location.hash = '#/gebet'; route(); });
       if (b.dataset.choice === 'event' || b.dataset.choice === 'announcement') {
         openNewsDialog(b.dataset.choice, null, location.hash.startsWith('#/aktuelles') || location.hash === '' || location.hash === '#/' ? route : null);
       }
@@ -1616,6 +1776,7 @@ async function route() {
     else if (parts[0] === 'ordner' && parts[1]) await renderFolder(parts[1]);
     else if (parts[0] === 'suche') await renderSearch(params);
     else if (parts[0] === 'aktuelles') await renderNews();
+    else if (parts[0] === 'gebet') await renderPrayers();
     else if (parts[0] === 'verwaltung') await renderAdmin();
     else if (parts[0] === 'konto') await renderAccount();
     else renderNotFound();

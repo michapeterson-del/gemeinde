@@ -288,6 +288,33 @@ function createApp({
     if (item.file) fs.rmSync(path.join(uploadDir, item.file), { force: true });
   }
 
+  // ---------- Gebetsanliegen ----------
+  // Alle Angemeldeten dürfen Anliegen einreichen. Von Mitgliedern eingereichte Anliegen
+  // erscheinen erst nach Freigabe durch einen Admin. „Privat“ = nur für Admins sichtbar.
+
+  const prayerPosts = new Map();
+  function tooManyPrayers(req) {
+    const ip = req.headers['cf-connecting-ip'] || req.headers['true-client-ip'] || req.ip;
+    const now = Date.now();
+    const list = (prayerPosts.get(ip) || []).filter((t) => now - t < 3600 * 1000);
+    prayerPosts.set(ip, list);
+    if (list.length >= 10) return true;
+    list.push(now);
+    return false;
+  }
+
+  app.get('/api/prayers', requireLogin, handle((req) => store.listPrayers({ admin: req.user.role === 'admin' })));
+  app.post('/api/prayers', requireLogin, handle((req, res) => {
+    if (req.user.role !== 'admin' && tooManyPrayers(req)) {
+      res.status(429).json({ error: 'Zu viele Anliegen in kurzer Zeit. Bitte später noch einmal.' });
+      return;
+    }
+    res.status(201).json(store.createPrayer(req.body || {}, req.user));
+  }));
+  app.post('/api/prayers/:id/pray', requireLogin, handle((req) => store.prayFor(req.params.id)));
+  app.put('/api/prayers/:id', requireAdmin, handle((req) => store.updatePrayer(req.params.id, req.body || {})));
+  app.delete('/api/prayers/:id', requireAdmin, handle((req) => store.deletePrayer(req.params.id) && { ok: true }));
+
   // ---------- Aktuelles ----------
 
   app.get('/api/news', requireLogin, handle((req) => ({

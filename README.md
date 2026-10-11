@@ -40,6 +40,9 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
   - **Vermeldungen** mit „anzeigen ab / bis“ (ohne Enddatum 4 Wochen sichtbar),
     wichtige Vermeldungen werden hervorgehoben
   - Termine sortiert nach „Diese Woche“, „Nächste Woche“ und Monaten – und zum **Ausdrucken**
+- **Gebetsanliegen**: Alle Angemeldeten können Anliegen einreichen – mit Namen oder anonym, auf Wunsch nur für die
+  Gemeindeleitung sichtbar. Anliegen von Mitgliedern erscheinen erst nach Freigabe durch einen Admin.
+  „🙏 Ich bete mit“ zeigt, wie viele mitbeten; erhörte Gebete können mit einer kurzen Notiz markiert werden.
 - **Suche** über Titel, Texte, Prediger, Bibelstellen, Ordnernamen und Jahreszahlen.
 - Funktioniert auf Handy, Tablet und Computer und lässt sich auf dem Handy
   **zum Startbildschirm hinzufügen** – dann sieht sie aus wie eine App.
