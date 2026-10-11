@@ -289,37 +289,14 @@ function createApp({
   }
 
   // ---------- Gebetsanliegen ----------
-  // Alle Angemeldeten dürfen Anliegen einreichen. Von Mitgliedern eingereichte Anliegen erscheinen
-  // erst nach Freigabe durch einen Gemeindeleiter. „Privat“ = nur für Gemeindeleiter sichtbar.
+  // Alle Angemeldeten sehen sie, nur Admins schreiben, ändern und löschen sie.
 
-  const prayerPosts = new Map();
-  function tooManyPrayers(req) {
-    const ip = req.headers['cf-connecting-ip'] || req.headers['true-client-ip'] || req.ip;
-    const now = Date.now();
-    const list = (prayerPosts.get(ip) || []).filter((t) => now - t < 3600 * 1000);
-    prayerPosts.set(ip, list);
-    if (list.length >= 10) return true;
-    list.push(now);
-    return false;
-  }
-
-  const requireLeader = (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'Bitte zuerst anmelden.' });
-    if (req.user.role !== 'leader') return res.status(403).json({ error: 'Nur für Gemeindeleiter.' });
-    next();
-  };
-
-  app.get('/api/prayers', requireLogin, handle((req) => store.listPrayers({ leader: req.user.role === 'leader' })));
-  app.post('/api/prayers', requireLogin, handle((req, res) => {
-    if (req.user.role !== 'admin' && tooManyPrayers(req)) {
-      res.status(429).json({ error: 'Zu viele Anliegen in kurzer Zeit. Bitte später noch einmal.' });
-      return;
-    }
+  app.get('/api/prayers', requireLogin, handle(() => store.listPrayers()));
+  app.post('/api/prayers', requireAdmin, handle((req, res) => {
     res.status(201).json(store.createPrayer(req.body || {}, req.user));
   }));
-  app.post('/api/prayers/:id/pray', requireLogin, handle((req) => store.prayFor(req.params.id)));
-  app.put('/api/prayers/:id', requireLeader, handle((req) => store.updatePrayer(req.params.id, req.body || {})));
-  app.delete('/api/prayers/:id', requireLeader, handle((req) => store.deletePrayer(req.params.id) && { ok: true }));
+  app.put('/api/prayers/:id', requireAdmin, handle((req) => store.updatePrayer(req.params.id, req.body || {})));
+  app.delete('/api/prayers/:id', requireAdmin, handle((req) => store.deletePrayer(req.params.id) && { ok: true }));
 
   // ---------- Aktuelles ----------
 

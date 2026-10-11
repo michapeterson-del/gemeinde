@@ -376,53 +376,51 @@ test('Fehlversuche bei einem Konto sperren nicht die anderen', async () => {
   assert.equal((await req('POST', '/api/login', { body: { username: 'admin', password: 'geheim123' } })).status, 200);
 });
 
-test('Gebetsanliegen: einreichen, Freigabe durch Gemeindeleiter, mitbeten, erhört', async () => {
-  // Gemeinde-Zugang einschalten, Mitglied und Gemeindeleiter anmelden
+test('Gebetsanliegen: nur Admins schreiben, alle lesen', async () => {
   await req('PUT', '/api/settings/member', { as: 'admin', body: { password: 'gebet-test-pw' } });
   await login('gemeinde', '', 'gebet-test-pw');
-  const created = await req('POST', '/api/users', { as: 'admin', body: { name: 'Pastor Klaus', username: 'klaus', password: 'klaus123', role: 'leader' } });
+
+  // Mitglieder dürfen keine Anliegen schreiben
+  assert.equal((await req('POST', '/api/prayers', { as: 'gemeinde', body: { text: 'Test' } })).status, 403);
+  assert.equal((await req('POST', '/api/prayers', { as: 'admin', body: { text: '  ' } })).status, 400);
+
+  const created = await req('POST', '/api/prayers', { as: 'admin', body: { text: 'Für die Familie Becker, die umzieht.', name: 'Familie Becker' } });
   assert.equal(created.status, 201);
-  assert.equal((await created.json()).role, 'leader');
-  await login('leader', 'klaus', 'klaus123');
+  const prayer = await created.json();
 
-  assert.equal((await req('POST', '/api/prayers', { as: 'gemeinde', body: { text: '  ' } })).status, 400);
-  const fromMember = await (await req('POST', '/api/prayers', { as: 'gemeinde', body: { text: 'Bitte betet für meine Mutter im Krankenhaus.', name: 'Anna' } })).json();
-  assert.equal(fromMember.status, 'pending');
-  const secret = await (await req('POST', '/api/prayers', { as: 'gemeinde', body: { text: 'Persönliches Anliegen', private: true } })).json();
+  // Alle sehen es sofort
+  const list = await (await req('GET', '/api/prayers', { as: 'gemeinde' })).json();
+  assert.ok(list.some((p) => p.id === prayer.id));
 
-  // Mitglieder und Admins sehen nichts davon
-  assert.equal((await (await req('GET', '/api/prayers', { as: 'gemeinde' })).json()).length, 0);
-  assert.equal((await (await req('GET', '/api/prayers', { as: 'admin' })).json()).length, 0);
-  assert.equal((await req('POST', `/api/prayers/${fromMember.id}/pray`, { as: 'gemeinde' })).status, 404);
+  // Nur Admins ändern und löschen
+  assert.equal((await req('PUT', `/api/prayers/${prayer.id}`, { as: 'gemeinde', body: { text: 'X' } })).status, 403);
+  const edited = await (await req('PUT', `/api/prayers/${prayer.id}`, { as: 'admin', body: { text: 'Für Familie Becker' } })).json();
+  assert.equal(edited.text, 'Für Familie Becker');
+  assert.equal((await req('DELETE', `/api/prayers/${prayer.id}`, { as: 'gemeinde' })).status, 403);
+  assert.equal((await req('DELETE', `/api/prayers/${prayer.id}`, { as: 'admin' })).status, 200);
+  assert.equal((await (await req('GET', '/api/prayers', { as: 'gemeinde' })).json()).some((p) => p.id === prayer.id), false);
+});
 
-  // Nur der Gemeindeleiter sieht alles und darf freigeben
-  const leaderList = await (await req('GET', '/api/prayers', { as: 'leader' })).json();
-  assert.deepEqual(leaderList.map((p) => p.id).sort(), [fromMember.id, secret.id].sort());
-  assert.equal((await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'gemeinde', body: { status: 'active' } })).status, 403);
-  assert.equal((await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'admin', body: { status: 'active' } })).status, 403);
-  assert.equal((await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'leader', body: { status: 'active' } })).status, 200);
+test('Alte Daten werden beim Start vereinfacht (Gebetsanliegen, Rolle Gemeindeleiter)', () => {
+  const { createStore } = require('../lib/store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemeinde-migrate-'));
+  const file = path.join(dir, 'db.json');
+  const first = createStore(file, { initialAdminPassword: 'admin-pw' });
+  const db = JSON.parse(fs.readFileSync(file, 'utf8'));
+  db.prayers = [
+    { id: 'a', text: 'Freigegeben', name: 'Anna', status: 'active', private: false, prayCount: 3, createdAt: '2026-10-01T10:00:00Z', createdBy: 'X' },
+    { id: 'b', text: 'Wartet', status: 'pending', private: false, createdAt: '2026-10-02T10:00:00Z' },
+    { id: 'c', text: 'Privat', status: 'active', private: true, createdAt: '2026-10-03T10:00:00Z' },
+    { id: 'd', text: 'Erhört', status: 'answered', answerNote: 'Ja', createdAt: '2026-10-04T10:00:00Z' },
+  ];
+  db.users.push({ ...db.users[0], id: 'leader-id', username: 'klaus', role: 'leader' });
+  fs.writeFileSync(file, JSON.stringify(db));
+  void first;
 
-  // Privates bleibt für alle außer Gemeindeleitern verborgen
-  let list = await (await req('GET', '/api/prayers', { as: 'gemeinde' })).json();
-  assert.deepEqual(list.map((p) => p.id), [fromMember.id]);
-  list = await (await req('GET', '/api/prayers', { as: 'admin' })).json();
-  assert.deepEqual(list.map((p) => p.id), [fromMember.id]);
-
-  const pray = await (await req('POST', `/api/prayers/${fromMember.id}/pray`, { as: 'gemeinde' })).json();
-  assert.equal(pray.prayCount, 1);
-
-  // Anliegen von Admin oder Gemeindeleiter ist sofort sichtbar
-  const fromAdmin = await (await req('POST', '/api/prayers', { as: 'admin', body: { text: 'Für die Jugendfreizeit' } })).json();
-  assert.equal(fromAdmin.status, 'active');
-
-  const answered = await (await req('PUT', `/api/prayers/${fromMember.id}`, { as: 'leader', body: { status: 'answered', answerNote: 'Die OP ist gut verlaufen!' } })).json();
-  assert.equal(answered.status, 'answered');
-  assert.ok(answered.answeredAt);
-
-  assert.equal((await req('DELETE', `/api/prayers/${fromAdmin.id}`, { as: 'admin' })).status, 403);
-  assert.equal((await req('DELETE', `/api/prayers/${fromAdmin.id}`, { as: 'leader' })).status, 200);
-
-  // Gemeindeleiter dürfen keine Inhalte/Benutzer verwalten
-  assert.equal((await req('POST', '/api/folders', { as: 'leader', body: { name: 'X' } })).status, 403);
-  assert.equal((await req('GET', '/api/users', { as: 'leader' })).status, 403);
+  const store = createStore(file);
+  const prayers = store.listPrayers();
+  assert.deepEqual(prayers.map((p) => p.id), ['d', 'a']);
+  assert.deepEqual(Object.keys(prayers[1]).sort(), ['createdAt', 'createdBy', 'id', 'name', 'text']);
+  assert.equal(store.getUser('leader-id').role, 'member');
+  fs.rmSync(dir, { recursive: true, force: true });
 });
