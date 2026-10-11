@@ -359,6 +359,31 @@ details summary { cursor: pointer; font-weight: 600; margin: 12px 0 4px; }
 .page-head h1 { flex: 1 1 240px; margin: 0; }
 .page-head { margin-bottom: 8px; }
 
+/* ---------- Startseite: Hauptbereiche & schlichte Ordner ---------- */
+
+.home-tiles { display: flex; flex-direction: column; gap: 12px; margin: 8px 0 12px; }
+.home-tile, .folder-grid .folder-tile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+.home-tile { padding: 22px 20px; }
+.home-tile:hover, .folder-grid .folder-tile:hover { border-color: var(--accent); text-decoration: none; transform: none; }
+.home-icon { font-size: 1.9rem; width: 52px; height: 52px; display: grid; place-items: center; background: var(--subtle); border-radius: 12px; flex: none; }
+.home-name { display: block; font-size: 1.3rem; font-weight: 700; }
+.home-tile .meta, .folder-tile .meta { display: block; }
+.home-arrow { font-size: 1.8rem; color: var(--muted); line-height: 1; }
+.folder-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important; }
+.folder-grid .folder-tile { padding: 14px 16px; flex-direction: row; overflow: visible; }
+.folder-tile-icon { font-size: 1.5rem; width: 44px; height: 44px; display: grid; place-items: center; background: var(--subtle); border-radius: 10px; flex: none; }
+.folder-grid .folder-tile .title { display: block; font-weight: 700; }
+
 /* ---------- Gebetsanliegen ---------- */
 
 .prayers { display: flex; flex-direction: column; gap: 10px; }
