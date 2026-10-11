@@ -152,6 +152,17 @@ Vergrößern: bei Render im Dienst → **Disks** → Größe erhöhen (z. B. auf
 3. Render startet neu → mit **admin** und dem neuen Passwort anmelden.
 4. **Wichtig:** Die Variable `ADMIN_PASSWORD_RESET` danach **wieder löschen** und speichern.
 
+**„Alle Passwörter sind auf einmal falsch“ (nach einem Update)**
+→ Dann fehlt fast immer der **dauerhafte Speicher (Disk)** – z. B. weil der Dienst im kostenlosen Plan läuft oder
+nicht über den Blueprint angelegt wurde. Ohne Disk beginnt die App nach jedem Neustart von vorn.
+Prüfen: Render → Dienst → **Disks** (muss eine Disk mit Pfad `/var/data` zeigen) und **Logs** – steht dort
+„ACHTUNG: Kein dauerhafter Speicher“, fehlt die Disk. Die App zeigt das auch in der **Verwaltung** rot an.
+Bis das behoben ist: anmelden mit **admin** und dem Wert von `ADMIN_PASSWORD` (ist der leer: `gemeinde`).
+
+**„Zu viele Fehlversuche“**
+→ Schutz gegen Passwort-Raten: nach 10 falschen Versuchen 5 Minuten warten. Ein Neustart bei Render
+(**Manual Deploy → Restart service**) hebt die Sperre sofort auf.
+
 **Die Seite zeigt einen Fehler / „Deploy failed“**
 → Dienst → **Logs** öffnen. Die letzten roten Zeilen zeigen den Grund.
 Kopiere sie mir einfach in den Chat – ich helfe dir weiter.

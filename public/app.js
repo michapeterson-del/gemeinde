@@ -658,6 +658,19 @@ async function renderAdmin() {
 }
 
 function storageCard(st) {
+  const warning = st.persistent === false ? `
+    <section class="card danger-card">
+      <h2>❌ Achtung: Daten werden nicht dauerhaft gespeichert!</h2>
+      <p>Bei Render ist für diese App <b>keine Disk (dauerhafter Speicher)</b> eingerichtet. Bei jedem Neustart oder Update
+      gehen <b>alle Daten verloren</b> – Benutzer, Passwörter, Termine und Aufnahmen.</p>
+      <p>Lösung: bei Render den Plan <b>„Starter“</b> wählen und unter <b>Disks</b> eine Disk mit dem Pfad <b>/var/data</b> anlegen,
+      außerdem unter <b>Environment</b> <code>DATA_DIR=/var/data/db</code> und <code>UPLOAD_DIR=/var/data/uploads</code> setzen
+      (oder den Dienst über den Blueprint neu anlegen). Erst danach Aufnahmen hochladen.</p>
+    </section>` : '';
+  return warning + storageCardInner(st);
+}
+
+function storageCardInner(st) {
   const types = [
     ['audio', '🎧', 'Audio-Aufnahmen'],
     ['image', '📷', 'Bilder'],

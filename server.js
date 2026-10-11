@@ -34,6 +34,14 @@ function safeExt(name) {
   return path.extname(name).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
 }
 
+// Bei Render ohne Disk (z. B. kostenloser Plan) ist der Speicher nicht dauerhaft:
+// bei jedem Neustart/Update wären alle Daten weg.
+function ephemeralStorage() {
+  if (!process.env.RENDER) return false;
+  const dir = process.env.DATA_DIR || '';
+  return !dir.startsWith('/var/data');
+}
+
 function createApp({
   dataDir = process.env.DATA_DIR || path.join(__dirname, 'data'),
   uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads'),
@@ -98,18 +106,23 @@ function createApp({
     next();
   };
 
-  // Einfacher Schutz gegen Passwort-Raten: max. 10 Fehlversuche pro 15 Minuten und IP.
+  // Einfacher Schutz gegen Passwort-Raten: nach 10 Fehlversuchen 5 Minuten Pause (pro IP).
+  const LOCK_MS = 5 * 60 * 1000;
   const failures = new Map();
-  function tooManyAttempts(ip) {
+  // Gibt die verbleibenden Wartesekunden zurück (0 = darf versuchen).
+  function lockedSeconds(ip) {
     const now = Date.now();
-    const list = (failures.get(ip) || []).filter((t) => now - t < 15 * 60 * 1000);
+    const list = (failures.get(ip) || []).filter((t) => now - t < LOCK_MS);
     failures.set(ip, list);
-    return list.length >= 10;
+    if (list.length < 10) return 0;
+    return Math.ceil((list[list.length - 10] + LOCK_MS - now) / 1000);
   }
 
   app.post('/api/login', (req, res) => {
-    if (tooManyAttempts(req.ip)) {
-      return res.status(429).json({ error: 'Zu viele Versuche. Bitte in 15 Minuten erneut probieren.' });
+    const wait = lockedSeconds(req.ip);
+    if (wait) {
+      const min = Math.ceil(wait / 60);
+      return res.status(429).json({ error: `Zu viele Fehlversuche. Bitte in ${min} ${min === 1 ? 'Minute' : 'Minuten'} erneut probieren.` });
     }
     const { username, password } = req.body || {};
     // Ohne Benutzername: Anmeldung mit dem gemeinsamen Gemeinde-Passwort.
@@ -200,7 +213,7 @@ function createApp({
       total = st.blocks * st.bsize;
       free = st.bavail * st.bsize;
     } catch {}
-    return { total, free, used: total !== null ? total - free : null, byType };
+    return { total, free, used: total !== null ? total - free : null, byType, persistent: !ephemeralStorage() };
   }));
 
   // ---------- Benutzer (nur Admin) ----------
@@ -477,6 +490,9 @@ function createApp({
 if (require.main === module) {
   if (!process.env.ADMIN_PASSWORD) {
     console.warn('⚠️  ADMIN_PASSWORD ist nicht gesetzt – der erste Admin heißt "admin" mit Passwort "gemeinde". Bitte gleich ändern!');
+  }
+  if (ephemeralStorage()) {
+    console.error('❌ ACHTUNG: Kein dauerhafter Speicher (Disk) eingerichtet! Bei jedem Neustart oder Update gehen ALLE Daten verloren (Benutzer, Passwörter, Aufnahmen). Bitte eine Disk unter /var/data anlegen – siehe ANLEITUNG-RENDER.md.');
   }
   if (!process.env.SESSION_SECRET) {
     console.warn('ℹ️  SESSION_SECRET ist nicht gesetzt – nach jedem Neustart muss man sich neu anmelden.');
