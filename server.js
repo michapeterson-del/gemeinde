@@ -26,16 +26,26 @@ function fileType(file) {
 function createApp({
   dataDir = process.env.DATA_DIR || path.join(__dirname, 'data'),
   uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads'),
-  adminPassword = process.env.ADMIN_PASSWORD || 'gemeinde',
-  adminPasswordReset = process.env.ADMIN_PASSWORD_RESET || '',
+  // Leerzeichen am Anfang/Ende entfernen – die schleichen sich beim Kopieren gern ein.
+  adminPassword = (process.env.ADMIN_PASSWORD || '').trim() || 'gemeinde',
+  adminPasswordReset = (process.env.ADMIN_PASSWORD_RESET || '').trim(),
   sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
 } = {}) {
   fs.mkdirSync(path.join(uploadDir, '.tmp'), { recursive: true });
   const store = createStore(path.join(dataDir, 'db.json'), { initialAdminPassword: adminPassword });
+  if (store.createdAdmin) {
+    console.log('ℹ️  Benutzer "admin" wurde neu angelegt – Passwort ist der Wert von ADMIN_PASSWORD.');
+  } else if (process.env.ADMIN_PASSWORD) {
+    console.log('ℹ️  Es gibt schon einen Admin – ADMIN_PASSWORD wird ignoriert (gilt nur beim allerersten Start). Zum Zurücksetzen ADMIN_PASSWORD_RESET verwenden.');
+  }
   if (adminPasswordReset) {
     // Notfall: Passwort vergessen → ADMIN_PASSWORD_RESET setzen, neu starten, anmelden, Variable wieder löschen.
-    store.resetAdmin(adminPasswordReset);
-    console.warn('⚠️  Das Passwort des Benutzers "admin" wurde über ADMIN_PASSWORD_RESET zurückgesetzt. Bitte die Variable jetzt wieder entfernen!');
+    try {
+      store.resetAdmin(adminPasswordReset);
+      console.warn('⚠️  Das Passwort des Benutzers "admin" wurde über ADMIN_PASSWORD_RESET zurückgesetzt. Bitte die Variable jetzt wieder entfernen!');
+    } catch (err) {
+      console.error(`❌ ADMIN_PASSWORD_RESET wurde nicht übernommen: ${err.message}`);
+    }
   }
   const tokens = createTokens(sessionSecret);
   const app = express();
