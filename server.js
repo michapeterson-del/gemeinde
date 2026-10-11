@@ -230,12 +230,6 @@ function createApp({
     items: store.searchItems({ q: req.query.q, limit: 300 }),
   })));
 
-  app.post('/api/folders/:id/texts', requireAdmin, handle((req, res) => {
-    const body = req.body || {};
-    const [item] = store.createItems(req.params.id, [{ ...body, type: 'text' }], req.user);
-    res.status(201).json(item);
-  }));
-
   app.put('/api/items/:id', requireAdmin, handle((req) => store.updateItem(req.params.id, req.body || {})));
 
   app.delete('/api/items/:id', requireAdmin, handle((req) => {

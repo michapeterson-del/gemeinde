@@ -369,7 +369,6 @@ async function renderFolder(id) {
     ${isAdmin() ? `
       <div class="toolbar">
         <button class="btn" id="tb-upload">⬆️ Dateien hochladen</button>
-        <button class="btn secondary" id="tb-text">📝 Text schreiben</button>
         <button class="btn secondary" id="tb-folder">📁 Unterordner anlegen</button>
         <button class="btn secondary" id="tb-edit">⚙️ Ordner bearbeiten</button>
       </div>` : ''}
@@ -383,7 +382,6 @@ async function renderFolder(id) {
 
   if (isAdmin()) {
     document.getElementById('tb-upload').onclick = () => openUploadDialog(id, reload);
-    document.getElementById('tb-text').onclick = () => openTextDialog(id, reload);
     document.getElementById('tb-folder').onclick = () => openFolderDialog({ parentId: id });
     document.getElementById('tb-edit').onclick = () => openFolderDialog(folder);
   }
@@ -501,7 +499,7 @@ async function renderAdmin() {
 
     <section class="card">
       <h2>👥 Benutzer</h2>
-      <p class="meta">Eigene Konten für Mitarbeiter. <b>Admin</b>: darf alles – Ordner anlegen, hochladen, Texte und Termine schreiben, Benutzer verwalten.<br><b>Normal</b>: darf nur ansehen (für Gemeindeglieder reicht meist das Gemeinde-Passwort oben).</p>
+      <p class="meta">Eigene Konten für Mitarbeiter. <b>Admin</b>: darf alles – Ordner anlegen, hochladen, Termine und Vermeldungen eintragen, Benutzer verwalten.<br><b>Normal</b>: darf nur ansehen (für Gemeindeglieder reicht meist das Gemeinde-Passwort oben).</p>
       <div class="user-list">
         ${users.map((u) => `
           <div class="user-row">
@@ -681,38 +679,6 @@ function openFolderDialog(folder, after) {
         else location.hash = folder.parentId ? `#/ordner/${folder.parentId}` : '#/';
       } catch (err) { toast(err.message, true); }
     };
-  });
-}
-
-// ---------- Dialoge: Text schreiben ----------
-
-function openTextDialog(folderId, after) {
-  openDialog(`
-    <form id="text-form">
-      <h2>📝 Text schreiben</h2>
-      <div class="form-grid">
-        <label class="full">Ordner <select name="folderId" required>${folderOptions(folderId)}</select></label>
-        <label class="full">Überschrift <input name="title" maxlength="200" required placeholder="z. B. Rückblick auf die Jugendfreizeit"></label>
-        <label>Datum <input type="date" name="date" value="${localDate(new Date())}" required></label>
-        <label class="full">Text <textarea name="text" rows="10" maxlength="20000" required></textarea></label>
-      </div>
-      <div class="row dialog-actions"><span class="grow"></span>
-        <button type="button" class="btn secondary" data-close>Abbrechen</button>
-        <button class="btn">Speichern</button>
-      </div>
-    </form>`, (d) => {
-    d.querySelector('#text-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const body = formData(e.target);
-      try {
-        await api(`/api/folders/${body.folderId}/texts`, { method: 'POST', body });
-        dialog.close();
-        toast('Text gespeichert ✓');
-        await loadFolders();
-        if (body.folderId === folderId && after) after();
-        else location.hash = `#/ordner/${body.folderId}`;
-      } catch (err) { toast(err.message, true); }
-    });
   });
 }
 
@@ -1310,14 +1276,12 @@ document.getElementById('nav-upload').addEventListener('click', () => {
     <h2>Was möchtest du hinzufügen?</h2>
     <div class="choice-grid">
       <button class="choice" data-choice="upload"><span>⬆️</span>Bilder, Aufnahmen<br>oder Dokumente</button>
-      <button class="choice" data-choice="text"><span>📝</span>Text schreiben</button>
       <button class="choice" data-choice="folder"><span>📁</span>Neuer Ordner</button>
       <button class="choice" data-choice="event"><span>📅</span>Termin eintragen</button>
       <button class="choice" data-choice="announcement"><span>📢</span>Vermeldung schreiben</button>
     </div>`, (d) => {
     d.querySelectorAll('[data-choice]').forEach((b) => b.addEventListener('click', () => {
       if (b.dataset.choice === 'upload') openUploadDialog(current, route);
-      if (b.dataset.choice === 'text') openTextDialog(current, route);
       if (b.dataset.choice === 'folder') openFolderDialog({ parentId: current || null });
       if (b.dataset.choice === 'event' || b.dataset.choice === 'announcement') {
         openNewsDialog(b.dataset.choice, null, location.hash.startsWith('#/aktuelles') || location.hash === '' || location.hash === '#/' ? route : null);

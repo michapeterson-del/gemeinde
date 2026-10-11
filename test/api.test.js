@@ -127,17 +127,17 @@ test('Verschachtelte Ordner, Upload mit Datum, Texte, Suche', async () => {
     assert.equal((await req('POST', `/api/folders/${sub.id}/items`, { as: 'admin', form: bad })).status, 400);
   }
 
-  const text = await req('POST', `/api/folders/${sub.id}/texts`, { as: 'admin', body: { title: 'Rückblick', text: 'Es war gesegnet!', date: '2026-08-20' } });
-  assert.equal(text.status, 201);
+  // „Text schreiben“ gibt es nicht mehr
+  assert.equal((await req('POST', `/api/folders/${sub.id}/texts`, { as: 'admin', body: { title: 'X', text: 'Y' } })).status, 404);
 
   const view = await (await req('GET', `/api/folders/${sub.id}`, { as: 'member' })).json();
   assert.deepEqual(view.path.map((p) => p.name), ['Bilder', 'Jugend', 'Jugendfreizeit', 'Edersee 2026']);
-  assert.deepEqual(view.items.map((i) => i.type), ['text', 'document', 'image']);
+  assert.deepEqual(view.items.map((i) => i.type), ['document', 'image']);
 
   // Übergeordneter Ordner zählt Einträge aus Unterordnern mit und bekommt ein Titelbild
   const all = await (await req('GET', '/api/folders', { as: 'member' })).json();
   const jugend = all.find((f) => f.name === 'Jugend');
-  assert.equal(jugend.itemCount, 3);
+  assert.equal(jugend.itemCount, 2);
   assert.equal(jugend.cover, img.file);
 
   // Suche findet über Ordnernamen und Jahr
@@ -157,7 +157,7 @@ test('Verschachtelte Ordner, Upload mit Datum, Texte, Suche', async () => {
 
   // Ordner löschen entfernt Unterordner, Einträge und Dateien
   const del = await (await req('DELETE', `/api/folders/${jugendfreizeit.id}`, { as: 'admin' })).json();
-  assert.equal(del.removed, 2);
+  assert.equal(del.removed, 1);
   assert.equal((await req('GET', `/uploads/${pdf.file}`, { as: 'admin' })).status, 404);
   assert.equal((await req('GET', `/api/folders/${sub.id}`, { as: 'admin' })).status, 404);
   assert.equal((await req('GET', `/uploads/${img.file}`, { as: 'admin' })).status, 200);

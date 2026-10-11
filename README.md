@@ -9,8 +9,8 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
   - **Gemeinde-Passwort**: *ein* gemeinsames Passwort für alle Gemeindeglieder – sie dürfen alles
     ansehen, anhören und herunterladen. Der Admin legt es in der Verwaltung fest und kann es jederzeit
     ändern (dann werden alle abgemeldet) oder ausschalten.
-  - **Admin** (eigenes Konto mit Benutzername): darf alles – Ordner anlegen, hochladen, Texte und Termine
-    schreiben, Benutzer verwalten
+  - **Admin** (eigenes Konto mit Benutzername): darf alles – Ordner anlegen, hochladen, Termine und
+    Vermeldungen eintragen, Benutzer verwalten
   - Optional auch eigene Konten mit Rolle **Normal**
   - Ohne Anmeldung ist nichts zu sehen (auch die Bilder nicht) – gut für den Datenschutz.
 - **Ordner, beliebig verschachtelt** – z. B. *Bilder › Jugend › Jugendfreizeit › Edersee 2026*.
@@ -21,8 +21,7 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
   - Bilder › Gemeindefeste
   - Gottesdienste (als Predigtliste mit Prediger und Bibelstelle)
   - Texte & Dokumente
-- **Hinzufügen**: Bilder, Audio, Videos, Dokumente (PDF, Word, Excel …) oder einfach einen **Text** schreiben –
-  und den Zielordner auswählen.
+- **Hinzufügen**: Bilder, Audio, Videos und Dokumente (PDF, Word, Excel …) – und den Zielordner auswählen.
 - **Automatisches Datum**: Beim Hochladen wird das Aufnahmedatum aus dem Foto gelesen
   (sonst aus dem Dateinamen, z. B. `IMG_20260815_…`). Man kann es vor dem Hochladen noch ändern.
   Bilder werden im Ordner nach Tagen gruppiert angezeigt.
