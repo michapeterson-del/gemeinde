@@ -948,7 +948,6 @@ function openUploadDialog(folderId, after) {
 // Bricht die Verbindung kurz ab, wird nur das betroffene Stück wiederholt – nicht die ganze Datei.
 const CHUNK_SIZE = 8 * 1024 * 1024;
 const PARALLEL = 4;
-const RETRIES = 5;
 let uploading = false;
 // Warteschlange: mehrere Uploads laufen automatisch nacheinander.
 const uploadQueue = [];
@@ -988,6 +987,52 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 
+// Wie lange bei Verbindungsproblemen (oder während die App bei Render neu startet)
+// weiter versucht wird, bevor aufgegeben wird.
+const MAX_WAIT_MS = 5 * 60 * 1000;
+
+class UploadError extends Error {
+  constructor(message, status, data) {
+    super(message);
+    this.status = status;
+    this.data = data || {};
+  }
+}
+
+// Netzwerkfehler, Serverfehler (5xx) und „zu viele Anfragen“ lohnen einen neuen Versuch.
+const retryable = (err) => !err.status || err.status >= 500 || err.status === 408 || err.status === 429;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function withRetry(fn, onWait) {
+  const started = Date.now();
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!retryable(err) || Date.now() - started > MAX_WAIT_MS) throw err;
+      const delay = Math.min(1000 * 2 ** (attempt - 1), 20000);
+      onWait(delay);
+      await sleep(delay);
+    }
+  }
+}
+
+async function jsonRequest(method, url, body) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new UploadError('Verbindung unterbrochen.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new UploadError(data.error || `Fehler ${res.status}`, res.status, data);
+  return data;
+}
+
 function sendChunk(uploadId, blob, index, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -998,13 +1043,10 @@ function sendChunk(uploadId, blob, index, onProgress) {
       if (xhr.status >= 200 && xhr.status < 300) return resolve();
       let msg = `Fehler ${xhr.status}`;
       try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
-      const err = new Error(msg);
-      // 4xx (außer 408/429) sind echte Fehler – keine Wiederholung
-      err.fatal = xhr.status >= 400 && xhr.status < 500 && xhr.status !== 408 && xhr.status !== 429;
-      reject(err);
+      reject(new UploadError(msg, xhr.status));
     };
-    xhr.onerror = () => reject(new Error('Verbindung unterbrochen.'));
-    xhr.ontimeout = () => reject(new Error('Zeitüberschreitung.'));
+    xhr.onerror = () => reject(new UploadError('Verbindung unterbrochen.'));
+    xhr.ontimeout = () => reject(new UploadError('Zeitüberschreitung.'));
     xhr.timeout = 5 * 60 * 1000;
     xhr.send(blob);
   });
@@ -1024,70 +1066,107 @@ async function uploadEntries(folderId, entries, shared) {
   const show = () => {
     let sent = doneBytes;
     for (const v of inflight.values()) sent += v;
-    const pct = Math.min(100, (sent / totalBytes) * 100);
+    sent = Math.min(sent, totalBytes);
+    const pct = (sent / totalBytes) * 100;
     bar.firstElementChild.style.width = pct.toFixed(1) + '%';
     const secs = (Date.now() - startedAt) / 1000;
     const speed = secs > 2 ? sent / secs : 0;
     const rest = speed ? (totalBytes - sent) / speed : 0;
-    const restText = !speed ? '' : rest < 60 ? ' · gleich fertig' : ` · noch ca. ${Math.ceil(rest / 60)} Min.`;
-    const speedText = speed ? ` · ${formatSize(speed)}/s` : '';
+    const restText = retryNote || !speed ? '' : rest < 60 ? ' · gleich fertig' : ` · noch ca. ${Math.ceil(rest / 60)} Min.`;
+    const speedText = retryNote || !speed ? '' : ` · ${formatSize(speed)}/s`;
     text.textContent = `⬆️ ${Math.round(pct)} % · ${formatSize(sent)} von ${formatSize(totalBytes)}` +
       (entries.length > 1 ? ` · Datei ${Math.min(uploaded + 1, entries.length)}/${entries.length}` : '') +
       speedText + restText + retryNote + queueNote();
   };
+  const onWait = (ms) => {
+    retryNote = ` · ⚠️ Verbindung unterbrochen – neuer Versuch in ${Math.round(ms / 1000)} s …`;
+    show();
+  };
+
+  // Lädt die angegebenen Stücke hoch, mehrere gleichzeitig, jedes mit Wiederholung.
+  async function sendChunks(sessionId, file, indexes, counted) {
+    const todo = [...indexes];
+    const worker = async () => {
+      while (todo.length) {
+        const index = todo.shift();
+        const blob = file.slice(index * CHUNK_SIZE, Math.min(file.size, (index + 1) * CHUNK_SIZE));
+        const key = `${sessionId}:${index}`;
+        await withRetry(() => sendChunk(sessionId, blob, index, (loaded) => {
+          inflight.set(key, loaded);
+          show();
+        }).catch((err) => {
+          inflight.delete(key);
+          throw err;
+        }), onWait);
+        inflight.delete(key);
+        if (!counted.has(index)) {
+          counted.add(index);
+          doneBytes += blob.size;
+        }
+        retryNote = '';
+        show();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, todo.length) }, worker));
+  }
+
+  async function uploadOne(en) {
+    const file = en.file;
+    for (let round = 1; ; round++) {
+      const counted = new Set();
+      const session = await withRetry(() => jsonRequest('POST', '/api/uploads', {
+        folderId,
+        name: file.name,
+        size: file.size,
+        mime: file.type,
+        chunkSize: CHUNK_SIZE,
+        date: en.date,
+        title: en.title,
+        duration: en.duration,
+        speaker: shared.speaker || '',
+        bibleText: shared.bibleText || '',
+        description: shared.description || '',
+      }), onWait);
+      try {
+        await sendChunks(session.id, file, [...Array(session.chunks).keys()], counted);
+        for (let check = 0; check < 3; check++) {
+          try {
+            return await withRetry(
+              () => jsonRequest('POST', `/api/uploads/${encodeURIComponent(session.id)}/complete`), onWait);
+          } catch (err) {
+            // Server meldet fehlende Stücke → nur diese nachliefern
+            if (err.status === 409 && err.data.missing && err.data.missing.length) {
+              await sendChunks(session.id, file, err.data.missing, new Set());
+              continue;
+            }
+            throw err;
+          }
+        }
+        throw new UploadError('Es fehlen noch Teile der Datei.');
+      } catch (err) {
+        // Der Server kennt den Upload nicht mehr → diese Datei einmal komplett neu senden.
+        if (err.status === 404 && round < 2) {
+          for (const index of counted) doneBytes -= Math.min(CHUNK_SIZE, file.size - index * CHUNK_SIZE);
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
 
   try {
     for (const en of entries) {
-      const file = en.file;
-      const session = await api('/api/uploads', {
-        method: 'POST',
-        body: {
-          folderId,
-          name: file.name,
-          size: file.size,
-          mime: file.type,
-          chunkSize: CHUNK_SIZE,
-          date: en.date,
-          title: en.title,
-          duration: en.duration,
-          speaker: shared.speaker || '',
-          bibleText: shared.bibleText || '',
-          description: shared.description || '',
-        },
-      });
-
-      let next = 0;
-      const worker = async () => {
-        while (next < session.chunks) {
-          const index = next++;
-          const blob = file.slice(index * CHUNK_SIZE, Math.min(file.size, (index + 1) * CHUNK_SIZE));
-          const key = `${session.id}:${index}`;
-          for (let attempt = 1; ; attempt++) {
-            try {
-              await sendChunk(session.id, blob, index, (loaded) => { inflight.set(key, loaded); show(); });
-              break;
-            } catch (err) {
-              inflight.delete(key);
-              if (err.fatal || attempt >= RETRIES) throw err;
-              retryNote = ' · Verbindung wackelt, versuche erneut …';
-              show();
-              await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
-            }
-          }
-          inflight.delete(key);
-          doneBytes += blob.size;
-          retryNote = '';
-          show();
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(PARALLEL, session.chunks) }, worker));
-      await api(`/api/uploads/${encodeURIComponent(session.id)}/complete`, { method: 'POST' });
+      await uploadOne(en);
       uploaded++;
       show();
     }
     return true;
   } catch (err) {
-    toast(`${err.message} (${uploaded} von ${entries.length} hochgeladen)`, true);
+    if (err.status === 401) {
+      toast('Du wurdest abgemeldet – bitte neu anmelden und den Upload wiederholen.', true);
+    } else {
+      toast(`${err.message} (${uploaded} von ${entries.length} hochgeladen)`, true);
+    }
     return false;
   } finally {
     bar.firstElementChild.style.width = '0';

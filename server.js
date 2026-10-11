@@ -50,9 +50,16 @@ function createApp({
   adminPasswordReset = (process.env.ADMIN_PASSWORD_RESET || '').trim(),
   sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
 } = {}) {
-  // Reste abgebrochener Uploads vom letzten Lauf wegräumen.
-  fs.rmSync(path.join(uploadDir, '.tmp'), { recursive: true, force: true });
-  fs.mkdirSync(path.join(uploadDir, '.tmp'), { recursive: true });
+  // Laufende Uploads überleben einen Neustart (z. B. ein Update bei Render).
+  // Nur Reste, die älter als einen Tag sind, werden weggeräumt.
+  const tmpDir = path.join(uploadDir, '.tmp');
+  fs.mkdirSync(tmpDir, { recursive: true });
+  for (const name of fs.readdirSync(tmpDir)) {
+    const full = path.join(tmpDir, name);
+    try {
+      if (Date.now() - fs.statSync(full).mtimeMs > 24 * 3600 * 1000) fs.rmSync(full, { force: true });
+    } catch {}
+  }
   const store = createStore(path.join(dataDir, 'db.json'), { initialAdminPassword: adminPassword });
   if (store.createdAdmin) {
     console.log('ℹ️  Benutzer "admin" wurde neu angelegt – Passwort ist der Wert von ADMIN_PASSWORD.');
@@ -380,14 +387,37 @@ function createApp({
 
   const CHUNK_MAX = 16 * 1024 * 1024;
   const sessions = new Map();
+  const sessionFile = (id) => path.join(tmpDir, `${id}.json`);
 
-  // Abgebrochene Uploads nach 6 Stunden aufräumen.
+  // Fortschritt jedes Uploads wird in einer kleinen Datei gemerkt, damit er einen Neustart übersteht.
+  function saveSession(u) {
+    const { received, ...rest } = u;
+    fs.writeFileSync(sessionFile(u.id), JSON.stringify({ ...rest, received: [...(received || [])] }));
+  }
+
+  function getSession(id) {
+    if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+    if (sessions.has(id)) return sessions.get(id);
+    try {
+      const data = JSON.parse(fs.readFileSync(sessionFile(id), 'utf8'));
+      const u = { ...data, received: new Set(data.received || []) };
+      sessions.set(id, u);
+      return u;
+    } catch {
+      return null;
+    }
+  }
+
+  function dropSession(u) {
+    sessions.delete(u.id);
+    fs.rmSync(sessionFile(u.id), { force: true });
+    fs.rmSync(u.tmp, { force: true });
+  }
+
+  // Abgebrochene Uploads nach einem Tag aufräumen.
   const cleanup = setInterval(() => {
-    for (const [id, u] of sessions) {
-      if (Date.now() - u.touched > 6 * 3600 * 1000) {
-        fs.rmSync(u.tmp, { force: true });
-        sessions.delete(id);
-      }
+    for (const u of sessions.values()) {
+      if (Date.now() - u.touched > 24 * 3600 * 1000) dropSession(u);
     }
   }, 3600 * 1000);
   cleanup.unref();
@@ -406,9 +436,9 @@ function createApp({
       return res.status(400).json({ error: 'Ungültige Stückgröße.' });
     }
     const id = crypto.randomUUID();
-    const tmp = path.join(uploadDir, '.tmp', `${id}.part`);
+    const tmp = path.join(tmpDir, `${id}.part`);
     fs.writeFileSync(tmp, '');
-    sessions.set(id, {
+    const u = {
       id, tmp, type, name, size, chunkSize,
       chunks: Math.ceil(size / chunkSize),
       received: new Set(),
@@ -418,10 +448,20 @@ function createApp({
         title: b.title, date: b.date, description: b.description, speaker: b.speaker, bibleText: b.bibleText,
         duration: b.duration,
       },
-      user: req.user,
+      userId: req.user.id,
       touched: Date.now(),
-    });
-    res.status(201).json({ id, chunks: Math.ceil(size / chunkSize) });
+      completedItem: null,
+    };
+    sessions.set(id, u);
+    saveSession(u);
+    res.status(201).json({ id, chunks: u.chunks });
+  });
+
+  // Welche Stücke sind schon da? (zum Fortsetzen nach einer Unterbrechung)
+  app.get('/api/uploads/:id', requireAdmin, (req, res) => {
+    const u = getSession(req.params.id);
+    if (!u) return res.status(404).json({ error: 'Upload nicht gefunden – bitte neu starten.' });
+    res.json({ id: u.id, chunks: u.chunks, received: [...u.received], completed: Boolean(u.completedItem) });
   });
 
   app.put(
@@ -429,8 +469,9 @@ function createApp({
     requireAdmin,
     express.raw({ type: () => true, limit: CHUNK_MAX }),
     async (req, res) => {
-      const u = sessions.get(req.params.id);
+      const u = getSession(req.params.id);
       if (!u) return res.status(404).json({ error: 'Upload nicht gefunden – bitte neu starten.' });
+      if (u.completedItem) return res.json({ ok: true });
       const index = Number(req.params.index);
       if (!Number.isInteger(index) || index < 0 || index >= u.chunks) {
         return res.status(400).json({ error: 'Ungültiges Stück.' });
@@ -441,31 +482,42 @@ function createApp({
       const fh = await fs.promises.open(u.tmp, 'r+');
       try {
         await fh.write(body, 0, body.length, index * u.chunkSize);
+        await fh.sync();
       } finally {
         await fh.close();
       }
       u.received.add(index);
       u.touched = Date.now();
+      saveSession(u);
       res.json({ ok: true });
     }
   );
 
   app.post('/api/uploads/:id/complete', requireAdmin, (req, res) => {
-    const u = sessions.get(req.params.id);
+    const u = getSession(req.params.id);
     if (!u) return res.status(404).json({ error: 'Upload nicht gefunden – bitte neu starten.' });
-    if (u.received.size !== u.chunks || fs.statSync(u.tmp).size !== u.size) {
-      return res.status(400).json({ error: 'Es fehlen noch Teile der Datei.' });
+    // Schon fertig (z. B. Antwort ging unterwegs verloren und es wird wiederholt) → einfach bestätigen.
+    if (u.completedItem) {
+      const item = store.getItem(u.completedItem);
+      return item ? res.status(201).json(item) : res.status(404).json({ error: 'Upload nicht gefunden.' });
+    }
+    let missing = [];
+    for (let i = 0; i < u.chunks; i++) if (!u.received.has(i)) missing.push(i);
+    if (missing.length || fs.statSync(u.tmp).size !== u.size) {
+      return res.status(409).json({ error: 'Es fehlen noch Teile der Datei.', missing });
     }
     const date = validDate(u.meta.date) || today();
     const file = `${date.slice(0, 4)}/${date.slice(5, 7)}/${crypto.randomUUID()}${safeExt(u.name)}`;
     try {
       const [item] = store.createItems(u.folderId, [{
         ...u.meta, type: u.type, date, mime: u.mime, size: u.size, originalName: u.name, file,
-      }], u.user);
+      }], store.getUser(u.userId) || req.user);
       const target = path.join(uploadDir, file);
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.renameSync(u.tmp, target);
-      sessions.delete(u.id);
+      u.completedItem = item.id;
+      u.touched = Date.now();
+      saveSession(u);
       res.status(201).json(item);
     } catch (err) {
       res.status(400).json({ error: err.message });

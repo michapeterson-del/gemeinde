@@ -265,7 +265,9 @@ test('Hochladen in Stücken (z. B. ganzer Gottesdienst als M4A)', async () => {
   assert.equal((await put(2, data.subarray(2 * chunkSize))).status, 200);
   assert.equal((await put(0, data.subarray(0, 100))).status, 400);
   // Fertigstellen geht erst, wenn alles da ist
-  assert.equal((await req('POST', `/api/uploads/${id}/complete`, { as: 'admin' })).status, 400);
+  const early = await req('POST', `/api/uploads/${id}/complete`, { as: 'admin' });
+  assert.equal(early.status, 409);
+  assert.deepEqual((await early.json()).missing, [0, 1]);
   await Promise.all([put(0, data.subarray(0, chunkSize)), put(1, data.subarray(chunkSize, 2 * chunkSize))]);
   // Ein Stück doppelt senden (Wiederholung) schadet nicht
   assert.equal((await put(1, data.subarray(chunkSize, 2 * chunkSize))).status, 200);
@@ -289,7 +291,45 @@ test('Hochladen in Stücken (z. B. ganzer Gottesdienst als M4A)', async () => {
   assert.equal(range.status, 206);
   assert.equal((await range.arrayBuffer()).byteLength, 1000);
 
-  assert.equal((await req('POST', `/api/uploads/${id}/complete`, { as: 'admin' })).status, 404);
+  // Nochmal „fertigstellen“ (z. B. Antwort ging verloren) → derselbe Eintrag, kein Doppel
+  const again = await req('POST', `/api/uploads/${id}/complete`, { as: 'admin' });
+  assert.equal(again.status, 201);
+  assert.equal((await again.json()).id, item.id);
+});
+
+test('Ein Upload übersteht einen Neustart des Servers (z. B. Update bei Render)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemeinde-restart-'));
+  const opts = { dataDir: path.join(dir, 'data'), uploadDir: path.join(dir, 'uploads'), adminPassword: 'admin-pw', sessionSecret: 'gleich' };
+  const start = () => new Promise((resolve) => { const s = createApp(opts).listen(0, () => resolve(s)); });
+  const url = (srv, p) => `http://127.0.0.1:${srv.address().port}${p}`;
+
+  let srv = await start();
+  const login = await fetch(url(srv, '/api/login'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'admin-pw' }) });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const folders = await (await fetch(url(srv, '/api/folders'), { headers: { Cookie: cookie } })).json();
+  const gd = folders.find((f) => f.name === 'Gottesdienste');
+  const data = Buffer.alloc(200 * 1024, 7);
+  const chunkSize = 64 * 1024;
+  const json = { 'Content-Type': 'application/json', Cookie: cookie };
+  const { id } = await (await fetch(url(srv, '/api/uploads'), { method: 'POST', headers: json, body: JSON.stringify({ folderId: gd.id, name: 'gd.m4a', size: data.length, chunkSize, date: '2026-10-11' }) })).json();
+  const put = (s, i) => fetch(url(s, `/api/uploads/${id}/chunks/${i}`), { method: 'PUT', headers: { Cookie: cookie }, body: data.subarray(i * chunkSize, (i + 1) * chunkSize) });
+  assert.equal((await put(srv, 0)).status, 200);
+  assert.equal((await put(srv, 1)).status, 200);
+  srv.close();
+
+  // Neustart: Stücke 0 und 1 sind noch bekannt, der Rest kann weiter hochgeladen werden
+  srv = await start();
+  const status = await (await fetch(url(srv, `/api/uploads/${id}`), { headers: { Cookie: cookie } })).json();
+  assert.deepEqual(status.received.sort(), [0, 1]);
+  assert.equal((await put(srv, 2)).status, 200);
+  assert.equal((await put(srv, 3)).status, 200);
+  const done = await fetch(url(srv, `/api/uploads/${id}/complete`), { method: 'POST', headers: { Cookie: cookie } });
+  assert.equal(done.status, 201);
+  const item = await done.json();
+  const file = await fetch(url(srv, `/uploads/${item.file}`), { headers: { Cookie: cookie } });
+  assert.ok(Buffer.from(await file.arrayBuffer()).equals(data));
+  srv.close();
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('ADMIN_PASSWORD_RESET wirkt nur einmal – spätere Passwortänderungen bleiben erhalten', async () => {
