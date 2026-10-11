@@ -5,9 +5,13 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
 
 ## Was kann die App?
 
-- **Anmeldung mit zwei Rollen**
-  - **Admin**: darf alles – Ordner anlegen, hochladen, Texte schreiben, Benutzer verwalten
-  - **Normal**: darf alles ansehen, anhören und herunterladen
+- **Anmeldung**
+  - **Gemeinde-Passwort**: *ein* gemeinsames Passwort für alle Gemeindeglieder – sie dürfen alles
+    ansehen, anhören und herunterladen. Der Admin legt es in der Verwaltung fest und kann es jederzeit
+    ändern (dann werden alle abgemeldet) oder ausschalten.
+  - **Admin** (eigenes Konto mit Benutzername): darf alles – Ordner anlegen, hochladen, Texte und Termine
+    schreiben, Benutzer verwalten
+  - Optional auch eigene Konten mit Rolle **Normal**
   - Ohne Anmeldung ist nichts zu sehen (auch die Bilder nicht) – gut für den Datenschutz.
 - **Ordner, beliebig verschachtelt** – z. B. *Bilder › Jugend › Jugendfreizeit › Edersee 2026*.
   Ordner bekommen Symbol, Farbe und Beschreibung und lassen sich jederzeit umbenennen oder verschieben.

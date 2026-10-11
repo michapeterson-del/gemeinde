@@ -258,21 +258,38 @@ function bindItems(container, items, reload) {
 
 // ---------- Anmeldung ----------
 
-function renderLogin() {
+async function renderLogin(mode) {
   document.getElementById('topbar').hidden = true;
   document.getElementById('bottomnav').hidden = true;
   dialog.open && dialog.close();
+  let memberLogin = false;
+  try {
+    memberLogin = (await api('/api/login-options')).memberLogin;
+  } catch {}
+  // Standard: Gemeinde-Passwort, falls eingerichtet – sonst Anmeldung mit Benutzername.
+  const shared = memberLogin && mode !== 'staff';
+
   app.innerHTML = `
     <div class="login-page">
       <form class="card login-card" id="login">
         <img src="icon.svg" alt="" width="72" height="72">
         <h1>Gemeinde-Mediathek</h1>
-        <p class="meta">Bitte melde dich an, um Bilder, Gottesdienste und Texte zu sehen.</p>
-        <label>Benutzername <input name="username" required autocomplete="username" autocapitalize="none" autofocus></label>
-        <label>Passwort <input type="password" name="password" required autocomplete="current-password"></label>
-        <button class="btn wide">Anmelden</button>
+        ${shared ? `
+          <p class="meta">Bitte gib das Gemeinde-Passwort ein, um Gottesdienste, Termine und Bilder zu sehen.</p>
+          <label>Gemeinde-Passwort <input type="password" name="password" required autocomplete="current-password" autofocus></label>
+          <button class="btn wide">Anmelden</button>
+          <button type="button" class="link-btn" id="switch-login">Mitarbeiter-Anmeldung (mit Benutzername) →</button>`
+        : `
+          <p class="meta">${memberLogin ? 'Anmeldung für Mitarbeiter und Admins.' : 'Bitte melde dich an, um Bilder, Gottesdienste und Texte zu sehen.'}</p>
+          <label>Benutzername <input name="username" required autocomplete="username" autocapitalize="none" autofocus></label>
+          <label>Passwort <input type="password" name="password" required autocomplete="current-password"></label>
+          <button class="btn wide">Anmelden</button>
+          ${memberLogin ? '<button type="button" class="link-btn" id="switch-login">← Zurück zum Gemeinde-Passwort</button>' : ''}`}
       </form>
     </div>`;
+
+  const sw = document.getElementById('switch-login');
+  if (sw) sw.onclick = () => renderLogin(shared ? 'staff' : 'member');
   document.getElementById('login').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -299,7 +316,7 @@ async function renderHome() {
 
   app.innerHTML = `
     <section class="hero">
-      <h1>${greeting}, ${esc(state.user.name)}! 👋</h1>
+      <h1>${state.user.shared ? 'Herzlich willkommen!' : `${greeting}, ${esc(state.user.name)}!`} 👋</h1>
       <p>Bilder, Gottesdienste und Erinnerungen aus unserem Gemeindeleben – alles an einem Ort.</p>
       <form id="hero-search" role="search">
         <input name="q" placeholder="Suche nach Predigt, Bibelstelle, Freizeit …" aria-label="Suche">
@@ -402,7 +419,25 @@ async function renderSearch(params) {
   });
 }
 
+async function logout() {
+  await api('/api/logout', { method: 'POST' });
+  state.user = null;
+  location.hash = '#/';
+  renderLogin();
+}
+
 async function renderAccount() {
+  if (state.user.shared) {
+    app.innerHTML = `
+      <h1>Mein Konto</h1>
+      <div class="card">
+        <p>Du bist mit dem <b>Gemeinde-Passwort</b> angemeldet.</p>
+        <p class="meta">Das Gemeinde-Passwort kann nur ein Admin ändern.</p>
+        <button class="btn secondary" id="logout">Abmelden</button>
+      </div>`;
+    document.getElementById('logout').onclick = logout;
+    return;
+  }
   app.innerHTML = `
     <h1>Mein Konto</h1>
     <div class="card">
@@ -416,12 +451,7 @@ async function renderAccount() {
       <label>Neues Passwort <small>mindestens 6 Zeichen</small><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
       <button class="btn" style="margin-top:12px">Passwort speichern</button>
     </form>`;
-  document.getElementById('logout').onclick = async () => {
-    await api('/api/logout', { method: 'POST' });
-    state.user = null;
-    location.hash = '#/';
-    renderLogin();
-  };
+  document.getElementById('logout').onclick = logout;
   document.getElementById('pw').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -434,7 +464,7 @@ async function renderAccount() {
 
 async function renderAdmin() {
   if (!isAdmin()) return renderNotFound();
-  const [users, storage] = await Promise.all([api('/api/users'), api('/api/storage')]);
+  const [users, storage, member] = await Promise.all([api('/api/users'), api('/api/storage'), api('/api/settings/member')]);
   await loadFolders();
 
   const tree = folderTree().map(({ folder: f, depth }) => `
@@ -448,6 +478,19 @@ async function renderAdmin() {
   app.innerHTML = `
     <h1>Verwaltung</h1>
 
+    <section class="card" id="member-card">
+      <h2>🔑 Gemeinde-Passwort</h2>
+      <p class="meta">Mit diesem <b>einen</b> Passwort melden sich alle Gemeindeglieder an. Sie können alles ansehen und anhören, aber nichts ändern.</p>
+      <p>Status: ${member.enabled ? '<b class="ok-text">✅ aktiv</b>' : '<b class="off-text">⛔ noch nicht eingerichtet</b>'}</p>
+      <form id="member-form" class="row">
+        <input type="text" name="password" minlength="6" required placeholder="${member.enabled ? 'Neues Gemeinde-Passwort' : 'Gemeinde-Passwort festlegen'}" autocomplete="off" style="flex:1;min-width:200px">
+        <button class="btn">${member.enabled ? 'Passwort ändern' : 'Einrichten'}</button>
+      </form>
+      ${member.enabled ? `
+        <p class="meta">Beim Ändern werden alle Mitglieder abgemeldet und müssen das neue Passwort eingeben.</p>
+        <button class="btn small secondary" id="member-off">Gemeinde-Zugang ausschalten</button>` : ''}
+    </section>
+
     ${storageCard(storage)}
 
     <section class="card">
@@ -458,7 +501,7 @@ async function renderAdmin() {
 
     <section class="card">
       <h2>👥 Benutzer</h2>
-      <p class="meta"><b>Admin</b>: darf alles – Ordner anlegen, hochladen, Texte schreiben, Benutzer verwalten.<br><b>Normal</b>: darf alles ansehen, anhören und herunterladen.</p>
+      <p class="meta">Eigene Konten für Mitarbeiter. <b>Admin</b>: darf alles – Ordner anlegen, hochladen, Texte und Termine schreiben, Benutzer verwalten.<br><b>Normal</b>: darf nur ansehen (für Gemeindeglieder reicht meist das Gemeinde-Passwort oben).</p>
       <div class="user-list">
         ${users.map((u) => `
           <div class="user-row">
@@ -482,6 +525,26 @@ async function renderAdmin() {
         <div class="full"><button class="btn">Benutzer anlegen</button></div>
       </form>
     </section>`;
+
+  document.getElementById('member-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = e.target.password.value.trim();
+    if (member.enabled && !confirm(`Gemeinde-Passwort auf „${password}“ ändern?\n\nAlle Mitglieder werden abgemeldet und brauchen das neue Passwort.`)) return;
+    try {
+      await api('/api/settings/member', { method: 'PUT', body: { password } });
+      toast('Gemeinde-Passwort gespeichert ✓');
+      renderAdmin();
+    } catch (err) { toast(err.message, true); }
+  });
+  const off = document.getElementById('member-off');
+  if (off) off.onclick = async () => {
+    if (!confirm('Gemeinde-Zugang ausschalten? Alle Mitglieder werden abgemeldet und können sich nicht mehr mit dem Gemeinde-Passwort anmelden.')) return;
+    try {
+      await api('/api/settings/member', { method: 'PUT', body: { enabled: false } });
+      toast('Gemeinde-Zugang ausgeschaltet');
+      renderAdmin();
+    } catch (err) { toast(err.message, true); }
+  };
 
   document.getElementById('new-root').onclick = () => openFolderDialog({ parentId: null }, renderAdmin);
   app.querySelectorAll('[data-sub]').forEach((b) => (b.onclick = () => openFolderDialog({ parentId: b.dataset.sub }, renderAdmin)));

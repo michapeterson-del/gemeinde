@@ -77,8 +77,10 @@ den Fortschritt. Fertig ist es, wenn dort **„Live“** steht und im Log
    - Benutzername: **admin**
    - Passwort: das aus Schritt 3
 3. Oben rechts bzw. unten auf **Konto** → bei Bedarf Passwort ändern.
-4. **Verwaltung** → Ordner anpassen und **Benutzer** für die Gemeinde anlegen
-   (Rolle **Normal** = nur ansehen, **Admin** = darf alles).
+4. **Verwaltung** → **🔑 Gemeinde-Passwort** festlegen. Mit diesem *einen* Passwort melden sich
+   alle Gemeindeglieder an (sie können alles ansehen, aber nichts ändern).
+5. Für Mitarbeiter, die hochladen sollen, unter **Benutzer** eigene Konten mit Rolle **Admin** anlegen.
+   Diese melden sich über **„Mitarbeiter-Anmeldung (mit Benutzername)“** an.
 
 > ℹ️ `ADMIN_PASSWORD` gilt nur beim **allerersten Start**. Wenn du es später bei Render änderst,
 > passiert nichts – das Passwort änderst du in der App unter **Konto**.
@@ -101,7 +103,7 @@ Wenn eure Gemeinde schon eine Internet-Adresse (Domain) hat:
 
 ## Schritt 6 – Auf die Handys bringen
 
-Schick den Gemeindemitgliedern die Adresse und ihre Zugangsdaten. Dann:
+Schick den Gemeindegliedern die Adresse und das **Gemeinde-Passwort**. Dann:
 
 - **iPhone:** Adresse in **Safari** öffnen → Teilen-Symbol ⬆️ → **„Zum Home-Bildschirm“**.
 - **Android:** Adresse in **Chrome** öffnen → Menü ⋮ → **„App installieren“** bzw.

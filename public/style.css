@@ -72,6 +72,11 @@ main.wrap { padding: 24px 16px 80px; min-height: 80vh; }
 .login-card img { margin: 0 auto; }
 .login-card label { text-align: left; }
 
+.link-btn { background: none; border: 0; color: var(--accent); font: inherit; font-size: 0.9rem; cursor: pointer; padding: 4px; }
+.link-btn:hover { text-decoration: underline; }
+.ok-text { color: #2fa36b; }
+.off-text { color: var(--danger); }
+
 /* ---------- Startseite ---------- */
 
 .hero {

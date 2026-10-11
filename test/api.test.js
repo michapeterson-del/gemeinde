@@ -195,3 +195,43 @@ test('Admin-Passwort lässt sich im Notfall über ADMIN_PASSWORD_RESET zurückse
   srv.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('Gemeinsames Gemeinde-Passwort für Mitglieder', async () => {
+  await login('member', 'maria', 'abcdefg');
+  // Noch nicht eingerichtet → Anmeldung ohne Benutzername geht nicht
+  let opts = await (await req('GET', '/api/login-options')).json();
+  assert.equal(opts.memberLogin, false);
+  assert.equal((await req('POST', '/api/login', { body: { password: 'irgendwas' } })).status, 401);
+
+  // Nur Admins dürfen es setzen
+  assert.equal((await req('PUT', '/api/settings/member', { as: 'member', body: { password: 'gemeinde2026' } })).status, 403);
+  assert.equal((await req('PUT', '/api/settings/member', { as: 'admin', body: { password: 'kurz' } })).status, 400);
+  assert.equal((await req('PUT', '/api/settings/member', { as: 'admin', body: { password: 'gemeinde2026' } })).status, 200);
+  opts = await (await req('GET', '/api/login-options')).json();
+  assert.equal(opts.memberLogin, true);
+
+  // Mitglied meldet sich nur mit dem Passwort an
+  assert.equal((await req('POST', '/api/login', { body: { password: 'falsch123' } })).status, 401);
+  const user = await login('gemeinde', '', 'gemeinde2026');
+  assert.equal(user.role, 'member');
+  assert.equal(user.shared, true);
+  assert.equal((await req('GET', '/api/folders', { as: 'gemeinde' })).status, 200);
+  assert.equal((await req('POST', '/api/folders', { as: 'gemeinde', body: { name: 'X' } })).status, 403);
+  assert.equal((await req('PUT', '/api/me/password', { as: 'gemeinde', body: { current: 'gemeinde2026', password: 'abcdefg' } })).status, 400);
+
+  // Der Name „gemeinde“ ist für Konten reserviert
+  assert.equal((await req('POST', '/api/users', { as: 'admin', body: { name: 'X', username: 'gemeinde', password: 'abcdefg' } })).status, 400);
+
+  // Passwort ändern → alte Anmeldungen ungültig
+  await req('PUT', '/api/settings/member', { as: 'admin', body: { password: 'neues-gemeinde-pw' } });
+  assert.equal((await req('GET', '/api/folders', { as: 'gemeinde' })).status, 401);
+  await login('gemeinde', '', 'neues-gemeinde-pw');
+  assert.equal((await req('GET', '/api/folders', { as: 'gemeinde' })).status, 200);
+
+  // Ausschalten → niemand kommt mehr mit dem Gemeinde-Passwort rein
+  await req('PUT', '/api/settings/member', { as: 'admin', body: { enabled: false } });
+  assert.equal((await req('GET', '/api/folders', { as: 'gemeinde' })).status, 401);
+  assert.equal((await req('POST', '/api/login', { body: { password: 'neues-gemeinde-pw' } })).status, 401);
+  // Admins sind davon nicht betroffen
+  assert.equal((await req('GET', '/api/folders', { as: 'admin' })).status, 200);
+});

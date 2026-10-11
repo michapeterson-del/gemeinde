@@ -89,10 +89,13 @@ function createApp({
       return res.status(429).json({ error: 'Zu viele Versuche. Bitte in 15 Minuten erneut probieren.' });
     }
     const { username, password } = req.body || {};
-    const user = store.authenticate(username, password);
+    // Ohne Benutzername: Anmeldung mit dem gemeinsamen Gemeinde-Passwort.
+    const user = username ? store.authenticate(username, password) : store.authenticateMember(password);
     if (!user) {
       failures.get(req.ip).push(Date.now());
-      return res.status(401).json({ error: 'Benutzername oder Passwort ist falsch.' });
+      return res.status(401).json({
+        error: username ? 'Benutzername oder Passwort ist falsch.' : 'Das Gemeinde-Passwort ist falsch.',
+      });
     }
     failures.delete(req.ip);
     const secure = req.secure ? '; Secure' : '';
@@ -110,7 +113,24 @@ function createApp({
 
   app.get('/api/me', (req, res) => res.json({ user: req.user ? store.publicUser(req.user) : null }));
 
+  // Für die Anmeldeseite: Gibt es den Gemeinde-Zugang?
+  app.get('/api/login-options', (req, res) => res.json({ memberLogin: store.memberAccessEnabled() }));
+
+  app.get('/api/settings/member', requireAdmin, (req, res) => res.json({ enabled: store.memberAccessEnabled() }));
+  app.put('/api/settings/member', requireAdmin, (req, res) => {
+    const { password, enabled } = req.body || {};
+    try {
+      store.setMemberPassword(enabled === false ? null : password);
+      res.json({ enabled: store.memberAccessEnabled() });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   app.put('/api/me/password', requireLogin, (req, res) => {
+    if (req.user.shared) {
+      return res.status(400).json({ error: 'Das Gemeinde-Passwort kann nur ein Admin ändern.' });
+    }
     const { current, password } = req.body || {};
     if (!store.authenticate(req.user.username, current)) {
       return res.status(400).json({ error: 'Das aktuelle Passwort stimmt nicht.' });
