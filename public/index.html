@@ -3,28 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#7c5cbf">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mediathek">
   <title>Gemeinde-Mediathek</title>
-  <meta name="description" content="Bilder, Gottesdienstaufnahmen und Videos unserer Gemeinde.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛪</text></svg>">
+  <meta name="description" content="Bilder, Gottesdienstaufnahmen, Texte und Dokumente unserer Gemeinde.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
+  <header class="topbar" id="topbar" hidden>
     <div class="wrap topbar-inner">
-      <a href="#/" class="brand"><span class="brand-icon">⛪</span> <span id="site-name">Gemeinde-Mediathek</span></a>
+      <a href="#/" class="brand"><span class="brand-icon">⛪</span> <span class="brand-name">Gemeinde-Mediathek</span></a>
       <nav class="topnav">
-        <a href="#/">Start</a>
-        <a href="#/suche">Suche</a>
-        <a href="#/verwaltung" id="admin-link">Anmelden</a>
+        <a href="#/" data-nav="/">Start</a>
+        <a href="#/suche" data-nav="/suche">Suche</a>
+        <a href="#/verwaltung" data-nav="/verwaltung" id="nav-admin" hidden>Verwaltung</a>
+        <button class="btn small" id="nav-upload" hidden>＋ Hinzufügen</button>
+        <a href="#/konto" data-nav="/konto" class="user-chip" id="nav-user" title="Mein Konto"></a>
       </nav>
     </div>
   </header>
 
   <main id="app" class="wrap" aria-live="polite"></main>
-
-  <footer class="footer">
-    <div class="wrap">Mit Liebe für unsere Gemeinde gemacht.</div>
-  </footer>
 
   <div id="lightbox" class="lightbox" hidden>
     <button class="lb-btn lb-close" aria-label="Schließen">✕</button>
@@ -36,8 +39,10 @@
     <button class="lb-btn lb-next" aria-label="Nächstes Bild">›</button>
   </div>
 
+  <dialog id="dialog"></dialog>
   <div id="toast" class="toast" hidden></div>
 
+  <script src="exif.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

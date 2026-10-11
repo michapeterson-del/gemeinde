@@ -1,0 +1,9 @@
+{
+  "name": "Gemeinde-Mediathek",
+  "short_name": "Mediathek",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf8f5",
+  "theme_color": "#7c5cbf",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
