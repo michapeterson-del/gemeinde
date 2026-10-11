@@ -928,29 +928,58 @@ function openUploadDialog(folderId, after) {
     d.querySelector('#upload-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!entries.length) return;
-      if (uploading) return toast('Es läuft schon ein Upload – bitte kurz warten.', true);
       const shared = formData(e.target);
       const files = entries;
       entries = [];
       // Fenster sofort schließen – das Hochladen läuft unten im Hintergrund weiter.
       dialog.close();
-      const ok = await uploadEntries(shared.folderId, files, shared);
-      files.forEach((en) => en.url && URL.revokeObjectURL(en.url));
-      await loadFolders();
-      // Nur neu anzeigen, wenn man gerade im Zielordner (oder auf der Startseite) ist.
-      const here = location.hash.slice(1) || '/';
-      if (here === `/ordner/${shared.folderId}` || here === '/') route();
-      else if (ok) toast(`Fertig hochgeladen ✓ – zu finden in „${(folderById(shared.folderId) || {}).name || 'Ordner'}“`);
+      const waitingBefore = uploading;
+      uploadQueue.push({ folderId: shared.folderId, entries: files, shared });
+      if (waitingBefore) {
+        toast(`In die Warteschlange gestellt ✓ – startet automatisch, sobald der Upload davor fertig ist.`);
+      }
+      runUploadQueue();
     });
   });
 }
 
 // Hochladen in Stücken: jede Datei wird in 8-MB-Teile zerlegt, davon gehen 4 gleichzeitig hoch.
+// Mehrere Uploads kommen in eine Warteschlange und laufen nacheinander (siehe runUploadQueue).
 // Bricht die Verbindung kurz ab, wird nur das betroffene Stück wiederholt – nicht die ganze Datei.
 const CHUNK_SIZE = 8 * 1024 * 1024;
 const PARALLEL = 4;
 const RETRIES = 5;
 let uploading = false;
+// Warteschlange: mehrere Uploads laufen automatisch nacheinander.
+const uploadQueue = [];
+
+async function runUploadQueue() {
+  if (uploading) return;
+  uploading = true;
+  const pill = document.getElementById('upload-pill');
+  pill.hidden = false;
+  try {
+    while (uploadQueue.length) {
+      const job = uploadQueue.shift();
+      const ok = await uploadEntries(job.folderId, job.entries, job.shared);
+      job.entries.forEach((en) => en.url && URL.revokeObjectURL(en.url));
+      await loadFolders().catch(() => {});
+      // Nur neu anzeigen, wenn man gerade im Zielordner (oder auf der Startseite) ist.
+      const here = location.hash.slice(1) || '/';
+      if (here === `/ordner/${job.folderId}` || here === '/') route();
+      if (ok) {
+        const name = (folderById(job.folderId) || {}).name || 'Ordner';
+        const n = job.entries.length;
+        toast(`${n} ${n === 1 ? 'Datei' : 'Dateien'} hochgeladen ✓ – in „${name}“` +
+          (uploadQueue.length ? ` · weiter mit dem nächsten Upload …` : ''));
+      }
+    }
+  } finally {
+    uploading = false;
+    pill.hidden = true;
+    pill.querySelector('.pill-bar').firstElementChild.style.width = '0';
+  }
+}
 
 window.addEventListener('beforeunload', (e) => {
   if (uploading) {
@@ -985,14 +1014,12 @@ async function uploadEntries(folderId, entries, shared) {
   const pill = document.getElementById('upload-pill');
   const bar = pill.querySelector('.pill-bar');
   const text = pill.querySelector('.pill-text');
-  pill.hidden = false;
   const totalBytes = entries.reduce((sum, en) => sum + en.file.size, 0) || 1;
   const startedAt = Date.now();
   let doneBytes = 0;
   const inflight = new Map();
   let uploaded = 0;
   let retryNote = '';
-  uploading = true;
 
   const show = () => {
     let sent = doneBytes;
@@ -1006,7 +1033,7 @@ async function uploadEntries(folderId, entries, shared) {
     const speedText = speed ? ` · ${formatSize(speed)}/s` : '';
     text.textContent = `⬆️ ${Math.round(pct)} % · ${formatSize(sent)} von ${formatSize(totalBytes)}` +
       (entries.length > 1 ? ` · Datei ${Math.min(uploaded + 1, entries.length)}/${entries.length}` : '') +
-      speedText + restText + retryNote;
+      speedText + restText + retryNote + queueNote();
   };
 
   try {
@@ -1058,16 +1085,18 @@ async function uploadEntries(folderId, entries, shared) {
       uploaded++;
       show();
     }
-    toast(`${uploaded} ${uploaded === 1 ? 'Datei' : 'Dateien'} hochgeladen ✓`);
     return true;
   } catch (err) {
     toast(`${err.message} (${uploaded} von ${entries.length} hochgeladen)`, true);
     return false;
   } finally {
-    uploading = false;
-    pill.hidden = true;
     bar.firstElementChild.style.width = '0';
   }
+}
+
+function queueNote() {
+  const waiting = uploadQueue.reduce((n, job) => n + job.entries.length, 0);
+  return waiting ? ` · ${waiting} ${waiting === 1 ? 'weitere Datei wartet' : 'weitere Dateien warten'}` : '';
 }
 
 // ---------- Dialoge: Eintrag bearbeiten ----------
