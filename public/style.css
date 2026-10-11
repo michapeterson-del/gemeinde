@@ -325,6 +325,27 @@ details summary { cursor: pointer; font-weight: 600; margin: 12px 0 4px; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 10px; z-index: 200; box-shadow: var(--shadow); max-width: calc(100vw - 32px); }
 .toast.error { background: var(--danger); color: #fff; }
 
+/* ---------- Hochladen im Hintergrund ---------- */
+
+.upload-pill {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 150;
+  width: min(520px, calc(100vw - 24px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  padding: 10px 14px;
+  font-size: 0.88rem;
+}
+.pill-bar { height: 6px; background: var(--border); border-radius: 999px; overflow: hidden; margin-bottom: 6px; }
+.pill-bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+.upload-pill:not([hidden]) ~ .toast { bottom: 100px; }
+.size-tip { background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 10px; padding: 8px 12px; font-size: 0.88rem; }
+
 /* ---------- Gottesdienst-Liste ---------- */
 
 .services { display: flex; flex-direction: column; gap: 8px; }
@@ -443,6 +464,8 @@ label.check input { width: auto; }
   .bottomnav a:hover { text-decoration: none; }
   main.wrap { padding-bottom: 100px; }
   .toast { bottom: 84px; }
+  .upload-pill { bottom: 76px; }
+  .upload-pill:not([hidden]) ~ .toast { bottom: 156px; }
   .news-columns { grid-template-columns: 1fr; }
   .event { gap: 10px; padding: 10px 12px; }
   .folder-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }

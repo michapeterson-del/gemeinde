@@ -820,7 +820,8 @@ function openUploadDialog(folderId, after) {
       </div>
       <p class="meta" id="date-hint" hidden>📅 Das Datum wird automatisch erkannt. Bitte kurz prüfen – du kannst es hier noch ändern.</p>
       <div class="file-list" id="file-list"></div>
-      <details id="more" ${startFolder && startFolder.kind === 'sermons' ? 'open' : ''}>
+      <p class="size-tip" id="size-tip" hidden>💡 <b>Tipp für schnelleres Hochladen:</b> Aufnahmen als <b>M4A mit 64–96 kbit/s in Mono</b> speichern. Dann ist die Datei etwa 3–4-mal kleiner und genauso schnell oben – für Sprache hört man keinen Unterschied.</p>
+      <details id="more">
         <summary>Weitere Angaben (optional)</summary>
         <div class="form-grid" style="margin-top:10px">
           <label>Datum für alle setzen <input type="date" id="all-date"></label>
@@ -829,8 +830,6 @@ function openUploadDialog(folderId, after) {
           <label class="full">Beschreibung <small>optional, z. B. „Erntedank mit Chor“</small><textarea name="description" maxlength="5000" rows="3"></textarea></label>
         </div>
       </details>
-      <div class="progress" id="progress" hidden><div></div></div>
-      <div class="meta" id="progress-text"></div>
       <div class="row dialog-actions"><span class="grow"></span>
         <button type="button" class="btn secondary" data-close>Abbrechen</button>
         <button class="btn" id="upload-btn" disabled>Hochladen</button>
@@ -851,6 +850,7 @@ function openUploadDialog(folderId, after) {
 
     const draw = () => {
       d.querySelector('#date-hint').hidden = !entries.length;
+      d.querySelector('#size-tip').hidden = !entries.some((en) => fileKind(en.file) === 'audio' && en.file.size > 100e6);
       btn.disabled = !entries.length;
       btn.textContent = entries.length ? `${entries.length} ${entries.length === 1 ? 'Datei' : 'Dateien'} hochladen` : 'Hochladen';
       list.innerHTML = entries.map((en, i) => `
@@ -909,34 +909,33 @@ function openUploadDialog(folderId, after) {
     });
     d.querySelector('select[name=folderId]').addEventListener('change', (e) => {
       const f = folderById(e.target.value);
-      if (f && f.kind === 'sermons') d.querySelector('#more').open = true;
       draw();
     });
 
     d.querySelector('#upload-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!entries.length) return;
+      if (uploading) return toast('Es läuft schon ein Upload – bitte kurz warten.', true);
       const shared = formData(e.target);
-      btn.disabled = true;
-      d.querySelectorAll('input, select, textarea, [data-remove]').forEach((el) => (el.disabled = true));
-      d.querySelector('[data-close]').disabled = true;
-      d.querySelector('.dialog-close').hidden = true;
-      const ok = await uploadEntries(shared.folderId, entries, shared, d);
-      entries.forEach((en) => en.url && URL.revokeObjectURL(en.url));
+      const files = entries;
+      entries = [];
+      // Fenster sofort schließen – das Hochladen läuft unten im Hintergrund weiter.
       dialog.close();
+      const ok = await uploadEntries(shared.folderId, files, shared);
+      files.forEach((en) => en.url && URL.revokeObjectURL(en.url));
       await loadFolders();
-      if (ok) {
-        if (shared.folderId === folderId && after) after();
-        else location.hash = `#/ordner/${shared.folderId}`;
-      } else if (after) after();
+      // Nur neu anzeigen, wenn man gerade im Zielordner (oder auf der Startseite) ist.
+      const here = location.hash.slice(1) || '/';
+      if (here === `/ordner/${shared.folderId}` || here === '/') route();
+      else if (ok) toast(`Fertig hochgeladen ✓ – zu finden in „${(folderById(shared.folderId) || {}).name || 'Ordner'}“`);
     });
   });
 }
 
-// Hochladen in Stücken: jede Datei wird in 8-MB-Teile zerlegt, davon gehen 3 gleichzeitig hoch.
+// Hochladen in Stücken: jede Datei wird in 8-MB-Teile zerlegt, davon gehen 4 gleichzeitig hoch.
 // Bricht die Verbindung kurz ab, wird nur das betroffene Stück wiederholt – nicht die ganze Datei.
 const CHUNK_SIZE = 8 * 1024 * 1024;
-const PARALLEL = 3;
+const PARALLEL = 4;
 const RETRIES = 5;
 let uploading = false;
 
@@ -945,9 +944,6 @@ window.addEventListener('beforeunload', (e) => {
     e.preventDefault();
     e.returnValue = '';
   }
-});
-dialog.addEventListener('cancel', (e) => {
-  if (uploading) e.preventDefault(); // ESC bricht den Upload nicht versehentlich ab
 });
 
 function sendChunk(uploadId, blob, index, onProgress) {
@@ -972,16 +968,17 @@ function sendChunk(uploadId, blob, index, onProgress) {
   });
 }
 
-async function uploadEntries(folderId, entries, shared, d) {
-  const bar = d.querySelector('#progress');
-  const text = d.querySelector('#progress-text');
+async function uploadEntries(folderId, entries, shared) {
+  const pill = document.getElementById('upload-pill');
+  const bar = pill.querySelector('.pill-bar');
+  const text = pill.querySelector('.pill-text');
+  pill.hidden = false;
   const totalBytes = entries.reduce((sum, en) => sum + en.file.size, 0) || 1;
   const startedAt = Date.now();
   let doneBytes = 0;
   const inflight = new Map();
   let uploaded = 0;
   let retryNote = '';
-  bar.hidden = false;
   uploading = true;
 
   const show = () => {
@@ -993,9 +990,10 @@ async function uploadEntries(folderId, entries, shared, d) {
     const speed = secs > 2 ? sent / secs : 0;
     const rest = speed ? (totalBytes - sent) / speed : 0;
     const restText = !speed ? '' : rest < 60 ? ' · gleich fertig' : ` · noch ca. ${Math.ceil(rest / 60)} Min.`;
-    text.textContent = `Lade hoch … ${Math.round(pct)} % · ${formatSize(sent)} von ${formatSize(totalBytes)}` +
-      (entries.length > 1 ? ` · Datei ${Math.min(uploaded + 1, entries.length)} von ${entries.length}` : '') +
-      restText + retryNote;
+    const speedText = speed ? ` · ${formatSize(speed)}/s` : '';
+    text.textContent = `⬆️ ${Math.round(pct)} % · ${formatSize(sent)} von ${formatSize(totalBytes)}` +
+      (entries.length > 1 ? ` · Datei ${Math.min(uploaded + 1, entries.length)}/${entries.length}` : '') +
+      speedText + restText + retryNote;
   };
 
   try {
@@ -1054,6 +1052,8 @@ async function uploadEntries(folderId, entries, shared, d) {
     return false;
   } finally {
     uploading = false;
+    pill.hidden = true;
+    bar.firstElementChild.style.width = '0';
   }
 }
 
