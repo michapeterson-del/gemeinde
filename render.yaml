@@ -1,0 +1,28 @@
+# Bauplan für Render (https://render.com) – siehe ANLEITUNG-RENDER.md
+services:
+  - type: web
+    name: gemeinde-mediathek
+    runtime: node
+    region: frankfurt # Server in Deutschland (Datenschutz)
+    plan: starter # Der kostenlose Plan hat keinen dauerhaften Speicher – dort gingen alle Fotos verloren!
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/me
+    autoDeploy: true
+    disk:
+      name: daten
+      mountPath: /var/data
+      sizeGB: 10 # kann später vergrößert (aber nicht verkleinert) werden
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false # wird beim Einrichten abgefragt
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATA_DIR
+        value: /var/data/db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: TZ
+        value: Europe/Berlin
+      - key: NODE_VERSION
+        value: "22"

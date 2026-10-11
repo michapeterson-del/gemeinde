@@ -24,15 +24,23 @@ function fileType(file) {
 }
 
 function createApp({
-  dataDir = path.join(__dirname, 'data'),
-  uploadDir = path.join(__dirname, 'uploads'),
+  dataDir = process.env.DATA_DIR || path.join(__dirname, 'data'),
+  uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads'),
   adminPassword = process.env.ADMIN_PASSWORD || 'gemeinde',
+  adminPasswordReset = process.env.ADMIN_PASSWORD_RESET || '',
   sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
 } = {}) {
   fs.mkdirSync(path.join(uploadDir, '.tmp'), { recursive: true });
   const store = createStore(path.join(dataDir, 'db.json'), { initialAdminPassword: adminPassword });
+  if (adminPasswordReset) {
+    // Notfall: Passwort vergessen → ADMIN_PASSWORD_RESET setzen, neu starten, anmelden, Variable wieder löschen.
+    store.resetAdmin(adminPasswordReset);
+    console.warn('⚠️  Das Passwort des Benutzers "admin" wurde über ADMIN_PASSWORD_RESET zurückgesetzt. Bitte die Variable jetzt wieder entfernen!');
+  }
   const tokens = createTokens(sessionSecret);
   const app = express();
+  // Hinter einem Proxy wie bei Render: echte Besucher-IP und HTTPS erkennen.
+  if (process.env.TRUST_PROXY || process.env.RENDER) app.set('trust proxy', 1);
 
   app.use(express.json({ limit: '1mb' }));
   app.use((req, res, next) => {

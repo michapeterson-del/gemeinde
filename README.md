@@ -58,6 +58,8 @@ Unter **Verwaltung** legst du dann weitere Benutzer an.
 | `SESSION_SECRET`  | Geheimer Schlüssel, damit Anmeldungen einen Neustart überleben | zufällig |
 | `PORT`            | Port des Servers                                   | `3000`       |
 | `TZ`              | Zeitzone für „heute“ bei Terminen, z. B. `Europe/Berlin` | Server-Zeitzone |
+| `DATA_DIR` / `UPLOAD_DIR` | Speicherort für Datenbank / Dateien | `data/` / `uploads/` |
+| `ADMIN_PASSWORD_RESET` | Notfall: setzt das Passwort von `admin` zurück (danach wieder entfernen) | – |
 | `MAX_UPLOAD_MB`   | Maximale Größe pro Datei in MB                     | `2048`       |
 
 ## Wo liegen die Daten?
@@ -68,6 +70,8 @@ Unter **Verwaltung** legst du dann weitere Benutzer an.
 **Für ein Backup einfach diese beiden Ordner sichern.**
 
 ## Online stellen
+
+👉 **Schritt-für-Schritt-Anleitung für Render: [ANLEITUNG-RENDER.md](ANLEITUNG-RENDER.md)**
 
 Die Seite braucht einen kleinen Server mit Node.js und genug Speicherplatz für die Medien
 (Gottesdienst-Videos werden schnell groß). Möglichkeiten:

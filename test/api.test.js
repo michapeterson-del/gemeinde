@@ -174,3 +174,17 @@ test('Passwortänderung meldet alte Sitzungen ab; letzter Admin bleibt geschütz
   const ok = await req('PUT', '/api/me/password', { as: 'member', body: { current: 'neues-pw', password: 'abcdefg' } });
   assert.equal(ok.status, 200);
 });
+
+test('Admin-Passwort lässt sich im Notfall über ADMIN_PASSWORD_RESET zurücksetzen', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemeinde-reset-'));
+  const opts = { dataDir: path.join(dir, 'data'), uploadDir: path.join(dir, 'uploads'), adminPassword: 'erstes-pw', sessionSecret: 's' };
+  createApp(opts);
+  const app = createApp({ ...opts, adminPasswordReset: 'neues-pw-123' });
+  const srv = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+  const url = `http://127.0.0.1:${srv.address().port}/api/login`;
+  const tryLogin = (password) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password }) });
+  assert.equal((await tryLogin('erstes-pw')).status, 401);
+  assert.equal((await tryLogin('neues-pw-123')).status, 200);
+  srv.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
