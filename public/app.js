@@ -9,7 +9,14 @@ const dialog = document.getElementById('dialog');
 const state = { user: null, folders: [] };
 
 const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
-const TYPE_ICON = { image: '🖼️', audio: '🎧', video: '🎬', document: '📄', text: '📝' };
+const TYPE_ICON = { image: 'Bild', audio: 'Audio', video: 'Video', document: 'Dok.', text: 'Text' };
+
+// Schlichte, einfarbige Symbole (SVG) – keine bunten Emojis
+const svg = (d) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
+  trash: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>'),
+};
 
 const isAdmin = () => state.user && state.user.role === 'admin';
 const ROLE_LABEL = { admin: 'Admin', member: 'Normal' };
@@ -112,7 +119,7 @@ function folderTree(excludeId) {
 function folderOptions(selected, { excludeId, allowRoot } = {}) {
   const opts = folderTree(excludeId).map(
     ({ folder, depth }) =>
-      `<option value="${esc(folder.id)}" ${folder.id === selected ? 'selected' : ''}>${'   '.repeat(depth)}${esc(folder.icon)} ${esc(folder.name)}</option>`
+      `<option value="${esc(folder.id)}" ${folder.id === selected ? 'selected' : ''}>${'   '.repeat(depth)}${esc(folder.name)}</option>`
   );
   if (allowRoot) opts.unshift(`<option value="" ${!selected ? 'selected' : ''}>— Hauptebene —</option>`);
   return opts.join('');
@@ -145,7 +152,6 @@ function folderTile(f) {
   ].filter(Boolean).join(' · ') || 'leer';
   return `
     <a class="folder-tile" href="#/ordner/${esc(f.id)}">
-      <span class="folder-tile-icon" aria-hidden="true">${esc(f.icon)}</span>
       <span class="grow">
         <span class="title">${esc(f.name)}</span>
         <span class="meta">${esc(sub)}</span>
@@ -155,7 +161,7 @@ function folderTile(f) {
 }
 
 function editButton(item) {
-  return isAdmin() ? `<button class="icon-btn" data-edit="${esc(item.id)}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>` : '';
+  return isAdmin() ? `<button class="icon-btn" data-edit="${esc(item.id)}" title="Bearbeiten" aria-label="Bearbeiten">${ICON.edit}</button>` : '';
 }
 
 function dateBadge(iso) {
@@ -166,7 +172,7 @@ function dateBadge(iso) {
 function pathLink(item, show) {
   if (!show || !item.path) return '';
   const last = item.path[item.path.length - 1];
-  return `<a class="path-link" href="#/ordner/${esc(last.id)}">📁 ${esc(pathLabel(item.path))}</a>`;
+  return `<a class="path-link" href="#/ordner/${esc(last.id)}">${esc(pathLabel(item.path))}</a>`;
 }
 
 // Zeigt eine Liste von Einträgen an – sortiert in Texte, Aufnahmen, Bilder und Dokumente.
@@ -182,7 +188,7 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
   } else if (media.length) {
     html.push('<h2 class="section">Aufnahmen & Videos</h2><div class="players">');
     for (const m of media) {
-      const details = [formatDuration(m.duration) && `⏱ ${formatDuration(m.duration)}`, m.speaker && `🎤 ${esc(m.speaker)}`, m.bibleText && `📖 ${esc(m.bibleText)}`].filter(Boolean).join(' · ');
+      const details = [formatDuration(m.duration), m.speaker && esc(m.speaker), m.bibleText && esc(m.bibleText)].filter(Boolean).join(' · ');
       html.push(`
         <article class="player">
           <div class="player-head">
@@ -198,7 +204,7 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
             ? `<video controls preload="metadata" playsinline src="${esc(fileUrl(m))}"></video>`
             : `<audio controls preload="none" src="${esc(fileUrl(m))}"></audio>`}
           ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
-          <a class="meta" href="${esc(fileUrl(m))}" download="${esc(m.originalName)}">⬇ Herunterladen (${esc(formatSize(m.size))})</a>
+          <a class="meta" href="${esc(fileUrl(m))}" download="${esc(m.originalName)}">Herunterladen (${esc(formatSize(m.size))})</a>
         </article>`);
     }
     html.push('</div>');
@@ -246,7 +252,6 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
     for (const d of docs) {
       html.push(`
         <div class="doc-row">
-          <span class="doc-icon">📄</span>
           <div class="grow">
             <a href="${esc(fileUrl(d))}" target="_blank" rel="noopener" download="${esc(d.originalName)}" class="title">${esc(itemTitle(d))}</a>
             <div class="meta">${esc(formatDate(d.date))} · ${esc(formatSize(d.size))}${d.description ? ' · ' + esc(d.description) : ''}</div>
@@ -277,9 +282,9 @@ function serviceList(list, showPath, { months = !showPath } = {}) {
     <div class="services">${g.items.map((m) => {
       const details = [
         WEEKDAYS[parseDate(m.date).getDay()],
-        formatDuration(m.duration) && `⏱ ${formatDuration(m.duration)}`,
-        m.speaker && `🎤 ${esc(m.speaker)}`,
-        m.bibleText && `📖 ${esc(m.bibleText)}`,
+        formatDuration(m.duration),
+        m.speaker && esc(m.speaker),
+        m.bibleText && esc(m.bibleText),
       ].filter(Boolean).join(' · ');
       return `
         <article class="service">
@@ -320,7 +325,7 @@ function bindItems(container, items, reload) {
         ? `<video controls autoplay playsinline src="${esc(fileUrl(item))}"></video>`
         : `<audio controls autoplay src="${esc(fileUrl(item))}"></audio>`}
       ${item.description ? `<p class="desc">${esc(item.description)}</p>` : ''}
-      <a class="meta" href="${esc(fileUrl(item))}" download="${esc(item.originalName)}">⬇ Herunterladen (${esc(formatSize(item.size))})</a>`;
+      <a class="meta" href="${esc(fileUrl(item))}" download="${esc(item.originalName)}">Herunterladen (${esc(formatSize(item.size))})</a>`;
   }));
 
   const images = items.filter((i) => i.type === 'image');
@@ -427,7 +432,6 @@ async function renderHome() {
     <nav class="home-tiles" aria-label="Bereiche">
       ${tops.map((f) => `
         <a class="home-tile" href="#/ordner/${esc(f.id)}">
-          <span class="home-icon" aria-hidden="true">${esc(f.icon)}</span>
           <span class="grow"><span class="home-name">${esc(f.name)}</span><span class="meta">${esc(sub(f))}</span></span>
           <span class="home-arrow" aria-hidden="true">›</span>
         </a>`).join('')}
@@ -462,7 +466,6 @@ async function renderFolder(id) {
     <nav class="crumbs"><a href="#/">Start</a>${path.map((p, i) =>
       i === path.length - 1 ? ` › <span>${esc(p.name)}</span>` : ` › <a href="#/ordner/${esc(p.id)}">${esc(p.name)}</a>`).join('')}</nav>
     <div class="folder-head" style="--c:${esc(folder.color)}">
-      <div class="folder-icon">${esc(folder.icon)}</div>
       <div class="grow">
         <h1>${esc(folder.name)}</h1>
         ${folder.description ? `<p class="meta">${esc(folder.description)}</p>` : ''}
@@ -470,14 +473,14 @@ async function renderFolder(id) {
     </div>
     ${isAdmin() ? `
       <div class="toolbar">
-        <button class="btn" id="tb-upload">⬆️ ${folder.kind === 'sermons' ? 'Gottesdienst hochladen' : 'Dateien hochladen'}</button>
-        <button class="btn secondary" id="tb-folder">📁 Unterordner anlegen</button>
-        <button class="btn secondary" id="tb-edit">⚙️ Ordner bearbeiten</button>
+        <button class="btn" id="tb-upload">${folder.kind === 'sermons' ? 'Gottesdienst hochladen' : 'Dateien hochladen'}</button>
+        <button class="btn secondary" id="tb-folder">Unterordner anlegen</button>
+        <button class="btn secondary" id="tb-edit">Ordner bearbeiten</button>
       </div>` : ''}
 
     ${children.length ? `<div class="folder-grid">${children.map(folderTile).join('')}</div>` : ''}
     <div id="items">${renderItems(items, { sermons: folder.kind === 'sermons' })}</div>
-    ${!children.length && !items.length ? `<div class="empty"><div class="big">🕊️</div>Dieser Ordner ist noch leer.</div>` : ''}
+    ${!children.length && !items.length ? `<div class="empty">Dieser Ordner ist noch leer.</div>` : ''}
   `;
 
   bindItems(document.getElementById('items'), items, reload);
@@ -503,9 +506,9 @@ async function renderSearch(params) {
   `;
   const results = document.getElementById('results');
   if (!result) {
-    results.innerHTML = '<div class="empty"><div class="big">🔍</div>Wonach suchst du? Zum Beispiel „Jugendfreizeit 2026“ oder „Johannes“.</div>';
+    results.innerHTML = '<div class="empty">Wonach suchst du? Zum Beispiel „Jugendfreizeit 2026“ oder „Johannes“.</div>';
   } else if (!result.folders.length && !result.items.length) {
-    results.innerHTML = '<div class="empty"><div class="big">🤷</div>Nichts gefunden.</div>';
+    results.innerHTML = '<div class="empty">Nichts gefunden.</div>';
   } else {
     results.innerHTML = `
       ${result.folders.length ? `<h2 class="section">Ordner</h2><div class="folder-grid">${result.folders.map(folderTile).join('')}</div>` : ''}
@@ -569,10 +572,10 @@ async function renderAdmin() {
 
   const tree = folderTree().map(({ folder: f, depth }) => `
     <div class="tree-row" style="--depth:${depth}">
-      <a href="#/ordner/${esc(f.id)}" class="grow"><span class="tree-icon" style="--c:${esc(f.color)}">${esc(f.icon)}</span> ${esc(f.name)}
+      <a href="#/ordner/${esc(f.id)}" class="grow">${esc(f.name)}
         <span class="meta">${f.itemCount ? `· ${f.itemCount} ${f.itemCount === 1 ? 'Eintrag' : 'Einträge'}` : ''}${f.kind === 'sermons' ? ' · Gottesdienst-Ordner' : ''}</span></a>
       <button class="btn small secondary" data-sub="${esc(f.id)}" title="Unterordner anlegen">＋ Unterordner</button>
-      <button class="btn small secondary" data-folder="${esc(f.id)}" title="Bearbeiten">✏️</button>
+      <button class="btn small secondary" data-folder="${esc(f.id)}" title="Bearbeiten">${ICON.edit}</button>
     </div>`).join('');
 
   app.innerHTML = `
@@ -581,7 +584,7 @@ async function renderAdmin() {
     <section class="card" id="member-card">
       <h2>Gemeinde-Passwort</h2>
       <p class="meta">Mit diesem <b>einen</b> Passwort melden sich alle Gemeindeglieder an. Sie können alles ansehen und anhören, aber nichts ändern.</p>
-      <p>Status: ${member.enabled ? '<b class="ok-text">✅ aktiv</b>' : '<b class="off-text">⛔ noch nicht eingerichtet</b>'}</p>
+      <p>Status: ${member.enabled ? '<b class="ok-text">aktiv</b>' : '<b class="off-text">noch nicht eingerichtet</b>'}</p>
       <form id="member-form" class="row">
         <input type="text" name="password" minlength="6" required placeholder="${member.enabled ? 'Neues Gemeinde-Passwort' : 'Gemeinde-Passwort festlegen'}" autocomplete="off" style="flex:1;min-width:200px">
         <button class="btn">${member.enabled ? 'Passwort ändern' : 'Einrichten'}</button>
@@ -612,8 +615,8 @@ async function renderAdmin() {
               <option value="member" ${u.role === 'member' ? 'selected' : ''}>Normal</option>
               <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
             </select>`}
-            ${u.main && u.id !== state.user.id ? '' : `<button class="btn small secondary" data-reset="${esc(u.id)}">🔑 Passwort</button>`}
-            ${u.id === state.user.id ? '<span class="meta">(du)</span>' : u.main ? '<span class="meta">🔒 geschützt</span>' : `<button class="btn small danger" data-deluser="${esc(u.id)}" aria-label="${esc(u.name)} löschen">🗑️</button>`}
+            ${u.main && u.id !== state.user.id ? '' : `<button class="btn small secondary" data-reset="${esc(u.id)}">Passwort ändern</button>`}
+            ${u.id === state.user.id ? '<span class="meta">(du)</span>' : u.main ? '<span class="meta">geschützt</span>' : `<button class="btn small danger" data-deluser="${esc(u.id)}" aria-label="${esc(u.name)} löschen">Löschen</button>`}
           </div>`).join('')}
       </div>
       <form id="new-user" class="form-grid" style="margin-top:18px">
@@ -689,7 +692,7 @@ async function renderAdmin() {
 function storageCard(st) {
   const warning = st.persistent === false ? `
     <section class="card danger-card">
-      <h2>❌ Achtung: Daten werden nicht dauerhaft gespeichert!</h2>
+      <h2>Achtung: Daten werden nicht dauerhaft gespeichert!</h2>
       <p>Bei Render ist für diese App <b>keine Disk (dauerhafter Speicher)</b> eingerichtet. Bei jedem Neustart oder Update
       gehen <b>alle Daten verloren</b> – Benutzer, Passwörter, Termine und Aufnahmen.</p>
       <p>Lösung: bei Render den Plan <b>„Starter“</b> wählen und unter <b>Disks</b> eine Disk mit dem Pfad <b>/var/data</b> anlegen,
@@ -701,13 +704,13 @@ function storageCard(st) {
 
 function storageCardInner(st) {
   const types = [
-    ['audio', '🎧', 'Audio-Aufnahmen'],
-    ['image', '📷', 'Bilder'],
-    ['video', '🎬', 'Videos'],
-    ['document', '📄', 'Dokumente'],
+    ['audio', '', 'Audio-Aufnahmen'],
+    ['image', '', 'Bilder'],
+    ['video', '', 'Videos'],
+    ['document', '', 'Dokumente'],
   ].filter(([t]) => st.byType[t]);
   const rows = types.map(([t, icon, label]) =>
-    `<div class="storage-row"><span>${icon} ${label}</span><span class="meta">${st.byType[t].count} ${st.byType[t].count === 1 ? 'Datei' : 'Dateien'} · ${esc(formatSize(st.byType[t].size))}</span></div>`).join('');
+    `<div class="storage-row"><span>${label}</span><span class="meta">${st.byType[t].count} ${st.byType[t].count === 1 ? 'Datei' : 'Dateien'} · ${esc(formatSize(st.byType[t].size))}</span></div>`).join('');
 
   if (st.total === null) {
     return `<section class="card"><h2>Speicher</h2>${rows || '<p class="meta">Noch keine Dateien hochgeladen.</p>'}</section>`;
@@ -724,13 +727,13 @@ function storageCardInner(st) {
       <div class="storage-head"><b>${esc(formatSize(st.used))}</b> von ${esc(formatSize(st.total))} belegt <span class="meta">(${pct} %)</span></div>
       <div class="storage-bar ${level}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
       <p class="meta">Noch frei: ${esc(formatSize(st.free))} – Platz für ca. <b>${more.toLocaleString('de-DE')}</b> weitere Gottesdienste (je ca. ${esc(formatSize(avg))}).</p>
-      ${level !== 'ok' ? `<p class="storage-hint">${level === 'full' ? '⚠️ Der Speicher ist fast voll!' : 'ℹ️ Der Speicher wird langsam knapp.'} Bei Render unter <b>Disks</b> kannst du ihn vergrößern.</p>` : ''}
+      ${level !== 'ok' ? `<p class="storage-hint">${level === 'full' ? 'Der Speicher ist fast voll!' : 'Der Speicher wird langsam knapp.'} Bei Render unter <b>Disks</b> kannst du ihn vergrößern.</p>` : ''}
       ${rows ? `<div class="storage-rows">${rows}</div>` : ''}
     </section>`;
 }
 
 function renderNotFound() {
-  app.innerHTML = '<div class="empty"><div class="big">🤷</div>Diese Seite gibt es nicht. <a href="#/">Zur Startseite</a></div>';
+  app.innerHTML = '<div class="empty">Diese Seite gibt es nicht. <a href="#/">Zur Startseite</a></div>';
 }
 
 // ---------- Dialoge: Ordner ----------
@@ -740,7 +743,7 @@ function openFolderDialog(folder, after) {
   const parent = folder.parentId ? folderById(folder.parentId) : null;
   openDialog(`
     <form id="folder-form">
-      <h2>${isNew ? '📁 Neuer Ordner' : '⚙️ Ordner bearbeiten'}</h2>
+      <h2>${isNew ? 'Neuer Ordner' : 'Ordner bearbeiten'}</h2>
       <div class="form-grid">
         <label class="full">Name <input name="name" required maxlength="100" value="${esc(folder.name)}" placeholder="z. B. Jugendfreizeit 2026"></label>
         <label>Liegt in
@@ -752,7 +755,6 @@ function openFolderDialog(folder, after) {
             <option value="sermons" ${folder.kind === 'sermons' ? 'selected' : ''}>Gottesdienste (übersichtliche Liste)</option>
           </select>
         </label>
-        <label>Symbol <small>ein Emoji</small><input name="icon" maxlength="8" value="${esc(folder.icon || '📁')}"></label>
         <label class="full">Beschreibung <small>optional</small><textarea name="description" maxlength="1000">${esc(folder.description)}</textarea></label>
       </div>
       <div class="row dialog-actions">
@@ -852,16 +854,15 @@ function openUploadDialog(folderId, after) {
 
   openDialog(`
     <form id="upload-form">
-      <h2>⬆️ ${startFolder && startFolder.kind === 'sermons' ? 'Gottesdienst hochladen' : 'Dateien hochladen'}</h2>
+      <h2>${startFolder && startFolder.kind === 'sermons' ? 'Gottesdienst hochladen' : 'Dateien hochladen'}</h2>
       <label>In welchen Ordner? <select name="folderId" required>${folderOptions(folderId)}</select></label>
       <div class="dropzone" id="dropzone" tabindex="0" role="button">
-        <div style="font-size:2rem">📤</div>
         Gottesdienst-Aufnahmen (z. B. M4A, MP3), Bilder oder Dokumente hierher ziehen<br>oder <b>tippen zum Auswählen</b>
         <input type="file" id="file-input" multiple accept="audio/*,.m4a,.mp3,.aac,.wav,image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.rtf" hidden>
       </div>
-      <p class="meta" id="date-hint" hidden>📅 Das Datum wird automatisch erkannt. Bitte kurz prüfen – du kannst es hier noch ändern.</p>
+      <p class="meta" id="date-hint" hidden>Das Datum wird automatisch erkannt. Bitte kurz prüfen – du kannst es hier noch ändern.</p>
       <div class="file-list" id="file-list"></div>
-      <p class="size-tip" id="size-tip" hidden>💡 <b>Tipp für schnelleres Hochladen:</b> Aufnahmen als <b>M4A mit 64–96 kbit/s in Mono</b> speichern. Dann ist die Datei etwa 3–4-mal kleiner und genauso schnell oben – für Sprache hört man keinen Unterschied.</p>
+      <p class="size-tip" id="size-tip" hidden><b>Tipp für schnelleres Hochladen:</b> Aufnahmen als <b>M4A mit 64–96 kbit/s in Mono</b> speichern. Dann ist die Datei etwa 3–4-mal kleiner und genauso schnell oben – für Sprache hört man keinen Unterschied.</p>
       <details id="more">
         <summary>Weitere Angaben (optional)</summary>
         <div class="form-grid" style="margin-top:10px">
@@ -899,7 +900,7 @@ function openUploadDialog(folderId, after) {
           ${en.url ? `<img src="${en.url}" alt="">` : `<span class="file-icon">${TYPE_ICON[fileKind(en.file)]}</span>`}
           <div class="grow">
             <input class="file-title" data-i="${i}" value="${esc(en.title)}" placeholder="${esc(titlePlaceholder(en))}" aria-label="Titel">
-            <div class="meta">${esc(formatSize(en.file.size))}${en.duration ? ' · ⏱ ' + esc(formatDuration(en.duration)) : ''} · Datum aus ${esc(en.source)}</div>
+            <div class="meta">${esc(formatSize(en.file.size))}${en.duration ? ' · ' + esc(formatDuration(en.duration)) : ''} · Datum aus ${esc(en.source)}</div>
           </div>
           <input type="date" class="file-date" data-i="${i}" value="${esc(en.date)}" aria-label="Datum" required>
           <button type="button" class="icon-btn" data-remove="${i}" aria-label="Entfernen">✕</button>
@@ -1102,12 +1103,12 @@ async function uploadEntries(folderId, entries, shared) {
     const rest = speed ? (totalBytes - sent) / speed : 0;
     const restText = retryNote || !speed ? '' : rest < 60 ? ' · gleich fertig' : ` · noch ca. ${Math.ceil(rest / 60)} Min.`;
     const speedText = retryNote || !speed ? '' : ` · ${formatSize(speed)}/s`;
-    text.textContent = `⬆️ ${Math.round(pct)} % · ${formatSize(sent)} von ${formatSize(totalBytes)}` +
+    text.textContent = `Hochladen: ${Math.round(pct)} % · ${formatSize(sent)} von ${formatSize(totalBytes)}` +
       (entries.length > 1 ? ` · Datei ${Math.min(uploaded + 1, entries.length)}/${entries.length}` : '') +
       speedText + restText + retryNote + queueNote();
   };
   const onWait = (ms) => {
-    retryNote = ` · ⚠️ Verbindung unterbrochen – neuer Versuch in ${Math.round(ms / 1000)} s …`;
+    retryNote = ` · Verbindung unterbrochen – neuer Versuch in ${Math.round(ms / 1000)} s …`;
     show();
   };
 
@@ -1289,7 +1290,7 @@ function dayLabel(iso, today) {
 }
 
 function categoryOf(e) {
-  return (state.eventCategories || {})[e.category] || { name: 'Termin', icon: '📌' };
+  return (state.eventCategories || {})[e.category] || { name: 'Termin' };
 }
 
 function repeatOptions(dateIso, selected) {
@@ -1307,12 +1308,12 @@ function repeatOptions(dateIso, selected) {
 
 function eventRow(e, today) {
   const cat = categoryOf(e);
-  const time = e.time ? `🕒 ${esc(e.time)}${e.endTime ? '–' + esc(e.endTime) : ''} Uhr` : '';
-  const where = e.location ? `📍 ${esc(e.location)}` : '';
+  const time = e.time ? `${esc(e.time)}${e.endTime ? '–' + esc(e.endTime) : ''} Uhr` : '';
+  const where = e.location ? esc(e.location) : '';
   const admin = isAdmin()
     ? `<div class="event-actions">
-        ${e.repeat !== 'none' ? `<button class="btn small secondary" data-cancel="${esc(e.id)}" data-date="${esc(e.date)}">${e.isCancelled ? '↩︎ Findet doch statt' : '✕ Absagen'}</button>` : ''}
-        <button class="icon-btn" data-news="${esc(e.id)}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>
+        ${e.repeat !== 'none' ? `<button class="btn small secondary" data-cancel="${esc(e.id)}" data-date="${esc(e.date)}">${e.isCancelled ? 'Findet doch statt' : '✕ Absagen'}</button>` : ''}
+        <button class="icon-btn" data-news="${esc(e.id)}" title="Bearbeiten" aria-label="Bearbeiten">${ICON.edit}</button>
       </div>`
     : '';
   return `
@@ -1320,10 +1321,10 @@ function eventRow(e, today) {
       ${dateBadge(e.date)}
       <div class="grow">
         <div class="event-day">${esc(dayLabel(e.date, today))}${e.isCancelled ? ' <span class="badge-cancel">Fällt aus</span>' : ''}</div>
-        <div class="title">${esc(cat.icon)} ${esc(e.title)}</div>
+        <div class="title">${esc(e.title)}</div>
         <div class="meta">${[time, where].filter(Boolean).join(' · ')}</div>
         ${e.text ? `<div class="event-text">${esc(e.text)}</div>` : ''}
-        ${e.repeatLabel ? `<div class="meta repeat">🔁 ${esc(e.repeatLabel)}</div>` : ''}
+        ${e.repeatLabel ? `<div class="meta repeat">${esc(e.repeatLabel)}</div>` : ''}
       </div>
       ${admin}
     </article>`;
@@ -1337,7 +1338,7 @@ function announcementCard(a) {
           <h3>${a.pinned ? '❗ ' : '📢 '}${esc(a.title)}</h3>
           <div class="meta">${esc(formatDate(a.date))}${a.createdBy ? ' · ' + esc(a.createdBy) : ''}</div>
         </div>
-        ${isAdmin() ? `<button class="icon-btn" data-news="${esc(a.id)}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>` : ''}
+        ${isAdmin() ? `<button class="icon-btn" data-news="${esc(a.id)}" title="Bearbeiten" aria-label="Bearbeiten">${ICON.edit}</button>` : ''}
       </div>
       ${a.text ? `<div class="text-body">${esc(a.text)}</div>` : ''}
     </article>`;
@@ -1367,15 +1368,15 @@ function agenda(events, today) {
             <div class="agenda-item${e.isCancelled ? ' cancelled' : ''}">
               <span class="agenda-time">${time || '&nbsp;'}</span>
               <div class="grow">
-                <span class="agenda-title">${esc(cat.icon)} ${esc(e.title)}</span>${e.isCancelled ? ' <span class="badge-cancel">fällt aus</span>' : ''}
+                <span class="agenda-title">${esc(e.title)}</span>${e.isCancelled ? ' <span class="badge-cancel">fällt aus</span>' : ''}
                 ${e.location ? `<span class="meta"> · ${esc(e.location)}</span>` : ''}
-                ${e.repeat && e.repeat !== 'none' ? `<span class="meta" title="${esc(e.repeatLabel)}"> · 🔁</span>` : ''}
+                ${e.repeat && e.repeat !== 'none' ? `<span class="meta"> · ${esc(e.repeatLabel)}</span>` : ''}
                 ${e.text ? `<div class="agenda-text">${esc(e.text)}</div>` : ''}
               </div>
               ${isAdmin() ? `
                 <div class="agenda-admin">
                   ${e.repeat !== 'none' ? `<button class="link-btn" data-cancel="${esc(e.id)}" data-date="${esc(e.date)}">${e.isCancelled ? 'findet statt' : 'absagen'}</button>` : ''}
-                  <button class="icon-btn small" data-news="${esc(e.id)}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>
+                  <button class="icon-btn small" data-news="${esc(e.id)}" title="Bearbeiten" aria-label="Bearbeiten">${ICON.edit}</button>
                 </div>` : ''}
             </div>`;
         }).join('')}</div>
@@ -1428,8 +1429,8 @@ function newsPreview(news) {
   if (!news.announcements.length && !upcoming.length) {
     return isAdmin()
       ? `<section class="news-preview empty-news"><p class="meta">Noch keine Termine oder Vermeldungen.</p>
-          <div class="row"><button class="btn small" data-new-news="event">📅 Termin eintragen</button>
-          <button class="btn small secondary" data-new-news="announcement">📢 Vermeldung schreiben</button></div></section>`
+          <div class="row"><button class="btn small" data-new-news="event">Termin eintragen</button>
+          <button class="btn small secondary" data-new-news="announcement">Vermeldung schreiben</button></div></section>`
       : '';
   }
   return `
@@ -1452,12 +1453,12 @@ async function renderNews(days = 42) {
   app.innerHTML = `
     <div class="row page-head">
       <h1 class="grow">Aktuelles</h1>
-      <button class="btn secondary small no-print" onclick="window.print()">🖨️ Drucken</button>
+      <button class="btn secondary small no-print" onclick="window.print()">Drucken</button>
     </div>
     ${isAdmin() ? `
       <div class="toolbar no-print">
-        <button class="btn" data-new-news="event">📅 Termin eintragen</button>
-        <button class="btn secondary" data-new-news="announcement">📢 Vermeldung schreiben</button>
+        <button class="btn" data-new-news="event">Termin eintragen</button>
+        <button class="btn secondary" data-new-news="announcement">Vermeldung schreiben</button>
       </div>` : ''}
 
     <h2 class="section">Vermeldungen</h2>
@@ -1489,14 +1490,13 @@ async function renderNews(days = 42) {
     const el = document.getElementById('all-news');
     el.innerHTML = `
       <details class="card" style="margin-top:36px">
-        <summary>🗂️ Alle Einträge verwalten (${entries.length}) – auch vergangene und abgelaufene</summary>
+        <summary>Alle Einträge verwalten (${entries.length}) – auch vergangene und abgelaufene</summary>
         <div class="user-list" style="margin-top:10px">
           ${entries.map((n) => `
             <div class="user-row">
-              <span>${n.type === 'event' ? esc(categoryOf(n).icon) : '📢'}</span>
               <div class="grow"><b>${esc(n.title)}</b>
-                <span class="meta">${n.type === 'event' ? `Termin · ${esc(formatDate(n.date))}${n.repeatLabel ? ' · 🔁 ' + esc(n.repeatLabel) : ''}` : `Vermeldung · ab ${esc(formatDate(n.date))}${n.until ? ' bis ' + esc(formatDate(n.until)) : ''}`}</span></div>
-              <button class="icon-btn" data-news="${esc(n.id)}" aria-label="Bearbeiten">✏️</button>
+                <span class="meta">${n.type === 'event' ? `Termin · ${esc(formatDate(n.date))}${n.repeatLabel ? ' · ' + esc(n.repeatLabel) : ''}` : `Vermeldung · ab ${esc(formatDate(n.date))}${n.until ? ' bis ' + esc(formatDate(n.until)) : ''}`}</span></div>
+              <button class="icon-btn" data-news="${esc(n.id)}" aria-label="Bearbeiten">${ICON.edit}</button>
             </div>`).join('') || '<p class="meta">Noch nichts eingetragen.</p>'}
         </div>
       </details>`;
@@ -1511,13 +1511,13 @@ function openNewsDialog(type, entry, after) {
   const isEvent = type === 'event';
 
   const form = isEvent ? `
-    <h2>${isNew ? '📅 Neuer Termin' : '📅 Termin bearbeiten'}</h2>
+    <h2>${isNew ? 'Neuer Termin' : 'Termin bearbeiten'}</h2>
     <p class="meta">Termine sind Veranstaltungen mit <b>Datum und Uhrzeit</b> – z. B. Gottesdienst, Gemeindestunde, Abendmahl, Kindertag, Orchesterprobe. Sie erscheinen im Kalender unter „Nächste Termine“.</p>
     <div class="form-grid">
       <label class="full">Titel <input name="title" required maxlength="200" value="${esc(e.title)}" placeholder="z. B. Gemeindestunde, Orchesterprobe, Kindertag"></label>
       <label>Art
         <select name="category">${Object.entries(cats).map(([id, c]) =>
-          `<option value="${esc(id)}" ${id === (e.category || 'gottesdienst') ? 'selected' : ''}>${esc(c.icon)} ${esc(c.name)}</option>`).join('')}</select>
+          `<option value="${esc(id)}" ${id === (e.category || 'gottesdienst') ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       </label>
       <label>Datum <input type="date" name="date" required value="${esc(e.date || localDate(new Date()))}"></label>
       <label>Uhrzeit von <input type="time" name="time" value="${esc(e.time)}"></label>
@@ -1528,7 +1528,7 @@ function openNewsDialog(type, entry, after) {
       <label class="full">Beschreibung <small>optional</small><textarea name="text" maxlength="10000" rows="3">${esc(e.text)}</textarea></label>
     </div>`
   : `
-    <h2>${isNew ? '📢 Neue Vermeldung' : '📢 Vermeldung bearbeiten'}</h2>
+    <h2>${isNew ? 'Neue Vermeldung' : 'Vermeldung bearbeiten'}</h2>
     <p class="meta">Vermeldungen sind <b>Mitteilungen an die Gemeinde</b> ohne festen Termin – z. B. „Anmeldung zum Kindertag bis Sonntag“, Kollekten-Zweck, Dank, Hinweise. Sie werden für eine bestimmte Zeit angezeigt.</p>
     <div class="form-grid">
       <label class="full">Überschrift <input name="title" required maxlength="200" value="${esc(e.title)}" placeholder="z. B. Anmeldung zum Kindertag"></label>
@@ -1643,8 +1643,8 @@ function prayerCard(p) {
         </div>
         ${isAdmin() ? `
           <div class="agenda-admin">
-            <button class="icon-btn small" data-edit-prayer="${esc(p.id)}" aria-label="Bearbeiten">✏️</button>
-            <button class="icon-btn small" data-delete-prayer="${esc(p.id)}" aria-label="Löschen">🗑️</button>
+            <button class="icon-btn small" data-edit-prayer="${esc(p.id)}" aria-label="Bearbeiten">${ICON.edit}</button>
+            <button class="icon-btn small" data-delete-prayer="${esc(p.id)}" aria-label="Löschen">${ICON.trash}</button>
           </div>` : ''}
       </div>
     </article>`;
@@ -1769,7 +1769,7 @@ function updateNav() {
   document.getElementById('bottom-admin').hidden = !isAdmin();
   document.getElementById('bottomnav').hidden = false;
   document.getElementById('nav-upload').hidden = !isAdmin();
-  document.getElementById('nav-user').textContent = '👤 ' + state.user.name.split(' ')[0];
+  document.getElementById('nav-user').textContent = state.user.name.split(' ')[0];
 }
 
 document.getElementById('nav-upload').addEventListener('click', () => {
@@ -1779,11 +1779,11 @@ document.getElementById('nav-upload').addEventListener('click', () => {
   openDialog(`
     <h2>Was möchtest du hinzufügen?</h2>
     <div class="choice-grid">
-      <button class="choice" data-choice="upload"><span>⬆️</span>Gottesdienst, Bilder<br>oder Dokumente</button>
-      <button class="choice" data-choice="folder"><span>📁</span>Neuer Ordner</button>
-      <button class="choice" data-choice="event"><span>📅</span>Termin eintragen</button>
-      <button class="choice" data-choice="announcement"><span>📢</span>Vermeldung schreiben</button>
-      <button class="choice" data-choice="prayer"><span>🙏</span>Gebetsanliegen</button>
+      <button class="choice" data-choice="upload">Gottesdienst, Bilder<br>oder Dokumente hochladen</button>
+      <button class="choice" data-choice="folder">Neuer Ordner</button>
+      <button class="choice" data-choice="event">Termin eintragen</button>
+      <button class="choice" data-choice="announcement">Vermeldung schreiben</button>
+      <button class="choice" data-choice="prayer">Gebetsanliegen schreiben</button>
     </div>`, (d) => {
     d.querySelectorAll('[data-choice]').forEach((b) => b.addEventListener('click', () => {
       if (b.dataset.choice === 'upload') openUploadDialog(current, route);
@@ -1819,7 +1819,7 @@ async function route() {
     else if (parts[0] === 'konto') await renderAccount();
     else renderNotFound();
   } catch (err) {
-    if (state.user) app.innerHTML = `<div class="empty"><div class="big">⚠️</div>${esc(err.message)}</div>`;
+    if (state.user) app.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
   }
   window.scrollTo(0, 0);
 }
