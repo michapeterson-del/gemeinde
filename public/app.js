@@ -151,6 +151,7 @@ dialog.addEventListener('close', () => (dialog.innerHTML = ''));
 
 function folderIcon(f) {
   if (f.kind === 'sermons') return ICON.church;
+  if (f.kind === 'documents') return ICON.file;
   const name = (f.name || '').toLowerCase();
   if (!f.parentId && /bild|foto/.test(name)) return ICON.image;
   if (!f.parentId && /dokument|text/.test(name)) return ICON.file;
@@ -265,9 +266,11 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
     for (const d of docs) {
       html.push(`
         <div class="doc-row">
+          <span class="folder-tile-icon" aria-hidden="true">${ICON.file}</span>
           <div class="grow">
-            <a href="${esc(fileUrl(d))}" target="_blank" rel="noopener" download="${esc(d.originalName)}" class="title">${esc(itemTitle(d))}</a>
-            <div class="meta">${esc(formatDate(d.date))} · ${esc(formatSize(d.size))}${d.description ? ' · ' + esc(d.description) : ''}</div>
+            <a href="${esc(fileUrl(d))}" target="_blank" rel="noopener" class="title">${esc(itemTitle(d))}</a>
+            <div class="meta">${esc(formatDate(d.date))} · ${esc(formatSize(d.size))}${d.description ? ' · ' + esc(d.description) : ''}
+              · <a href="${esc(fileUrl(d))}" download="${esc(d.originalName)}">Herunterladen</a></div>
             ${pathLink(d, showPath)}
           </div>
           ${editButton(d)}
@@ -398,13 +401,16 @@ async function renderLogin(mode) {
 
 // ---------- Seiten ----------
 
+const kindRank = (f) => (f.kind === 'sermons' ? 0 : f.kind === 'documents' ? 2 : 1);
+
 async function renderHome() {
   await loadFolders();
   // Hauptbereiche schlicht als große Einträge: zuerst Gottesdienste, dann Bilder, dann weitere.
   const tops = state.folders
     .filter((f) => !f.parentId)
     .filter((f) => isAdmin() || f.itemCount || f.childCount) // leere Bereiche nur für Admins
-    .sort((x, y) => (x.kind === 'sermons' ? 0 : 1) - (y.kind === 'sermons' ? 0 : 1) || x.name.localeCompare(y.name, 'de'));
+    // Reihenfolge: Gottesdienste, dann normale Bereiche (z. B. Bilder), dann Dokumente
+    .sort((x, y) => kindRank(x) - kindRank(y) || x.name.localeCompare(y.name, 'de'));
 
   const [news, prayers, verse] = await Promise.all([
     api('/api/news'),
@@ -488,7 +494,7 @@ async function renderFolder(id) {
     </div>
     ${isAdmin() ? `
       <div class="toolbar">
-        <button class="btn" id="tb-upload">${folder.kind === 'sermons' ? 'Gottesdienst hochladen' : 'Dateien hochladen'}</button>
+        <button class="btn" id="tb-upload">${folder.kind === 'sermons' ? 'Gottesdienst hochladen' : folder.kind === 'documents' ? 'Dokument hochladen' : 'Dateien hochladen'}</button>
         <button class="btn secondary" id="tb-folder">Unterordner anlegen</button>
         <button class="btn secondary" id="tb-edit">Ordner bearbeiten</button>
       </div>` : ''}
@@ -768,6 +774,7 @@ function openFolderDialog(folder, after) {
           <select name="kind">
             <option value="normal">Normal</option>
             <option value="sermons" ${folder.kind === 'sermons' ? 'selected' : ''}>Gottesdienste (übersichtliche Liste)</option>
+            <option value="documents" ${folder.kind === 'documents' ? 'selected' : ''}>Dokumente (Liste zum Herunterladen)</option>
           </select>
         </label>
         <label class="full">Beschreibung <small>optional</small><textarea name="description" maxlength="1000">${esc(folder.description)}</textarea></label>

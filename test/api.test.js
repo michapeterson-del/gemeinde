@@ -464,3 +464,27 @@ test('Der Haupt-Admin „admin“ ist geschützt', async () => {
   const second = users.find((u) => u.username === 'admin2');
   assert.equal((await req('DELETE', `/api/users/${second.id}`, { as: 'admin' })).status, 200);
 });
+
+test('Eigener Bereich „Dokumente“', async () => {
+  const { createStore } = require('../lib/store');
+  // Neu: Standard-Bereich „Dokumente“ vorhanden
+  const folders = await (await req('GET', '/api/folders', { as: 'admin' })).json();
+  const docs = folders.find((f) => f.kind === 'documents');
+  assert.ok(docs);
+  assert.equal(docs.name, 'Dokumente');
+  assert.equal(docs.parentId, null);
+
+  // Alt: „Texte & Dokumente“ wird zu „Dokumente“
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemeinde-docs-'));
+  const file = path.join(dir, 'db.json');
+  createStore(file);
+  const db = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const d = db.folders.find((f) => f.kind === 'documents');
+  d.kind = 'normal'; d.name = 'Texte & Dokumente';
+  fs.writeFileSync(file, JSON.stringify(db));
+  const store = createStore(file);
+  const migrated = store.listFolders().filter((f) => f.kind === 'documents');
+  assert.equal(migrated.length, 1);
+  assert.equal(migrated[0].name, 'Dokumente');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
