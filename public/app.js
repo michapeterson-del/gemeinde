@@ -422,6 +422,8 @@ async function renderHome() {
 
     <div id="news-preview">${newsPreview(news)}</div>
 
+    <div id="prayer-preview">${prayerPreview(prayers)}</div>
+
     <nav class="home-tiles" aria-label="Bereiche">
       ${tops.map((f) => `
         <a class="home-tile" href="#/ordner/${esc(f.id)}">
@@ -431,8 +433,6 @@ async function renderHome() {
         </a>`).join('')}
     </nav>
     ${isAdmin() ? '<p><button class="btn secondary small" id="new-folder">＋ Neuen Hauptbereich anlegen</button></p>' : ''}
-
-    <div id="prayer-preview">${prayerPreview(prayers)}</div>
   `;
 
   document.getElementById('hero-search').addEventListener('submit', (e) => {
@@ -1636,13 +1636,17 @@ function openVerseDialog(verse, after) {
 function prayerCard(p) {
   return `
     <article class="prayer">
-      <div class="prayer-text">${esc(p.text)}</div>
-      <div class="meta">${p.name ? esc(p.name) + ' · ' : ''}${esc(formatDate(p.createdAt.slice(0, 10)))}</div>
-      ${isAdmin() ? `
-        <div class="prayer-actions">
-          <button class="icon-btn" data-edit-prayer="${esc(p.id)}" aria-label="Bearbeiten">✏️</button>
-          <button class="icon-btn" data-delete-prayer="${esc(p.id)}" aria-label="Löschen">🗑️</button>
-        </div>` : ''}
+      <div class="row" style="align-items:flex-start;flex-wrap:nowrap">
+        <div class="grow">
+          <div class="prayer-text">${esc(p.text)}</div>
+          <div class="meta">${p.name ? esc(p.name) + ' · ' : ''}${esc(formatDate(p.createdAt.slice(0, 10)))}</div>
+        </div>
+        ${isAdmin() ? `
+          <div class="agenda-admin">
+            <button class="icon-btn small" data-edit-prayer="${esc(p.id)}" aria-label="Bearbeiten">✏️</button>
+            <button class="icon-btn small" data-delete-prayer="${esc(p.id)}" aria-label="Löschen">🗑️</button>
+          </div>` : ''}
+      </div>
     </article>`;
 }
 
