@@ -498,7 +498,7 @@ body.has-player .upload-pill { bottom: 96px; }
   cursor: pointer;
 }
 .service-row .title { font-weight: 700; }
-.service-row:hover .play-icon { background: var(--accent); color: #fff; }
+.service-row:hover .play-icon { background: var(--accent); color: var(--accent-ink); }
 .play-icon {
   flex: none;
   width: 42px;
@@ -511,10 +511,8 @@ body.has-player .upload-pill { bottom: 96px; }
   font-size: 1rem;
   transition: background 0.15s;
 }
-.service-row.playing .play-icon { background: var(--accent); color: #fff; }
-.service-row.playing .play-icon::before { content: '■'; }
-.service-row.playing .play-icon { font-size: 0; }
-.service-row.playing .play-icon::before { font-size: 0.9rem; }
+.service-row.playing .play-icon { background: var(--accent); color: var(--accent-ink); }
+.play-icon svg { width: 18px; height: 18px; display: block; }
 .service .path-link { margin: 0 0 8px 86px; }
 .service-player { padding: 0 14px 12px; }
 .service-player audio, .service-player video { width: 100%; display: block; margin-bottom: 6px; }

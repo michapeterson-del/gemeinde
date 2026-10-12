@@ -18,6 +18,8 @@ const ICON = {
   image: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/>'),
   file: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/>'),
   folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  play: svg('<path d="M8 5l11 7-11 7z" fill="currentColor" stroke="none"/>'),
+  pause: svg('<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor" stroke="none"/>'),
   edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
   trash: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>'),
 };
@@ -311,7 +313,7 @@ function serviceList(list, showPath, { months = !showPath } = {}) {
                 <div class="title">${esc(itemTitle(m))}</div>
                 <div class="meta">${details}</div>
               </div>
-              <span class="play-icon" aria-hidden="true">▶</span>
+              <span class="play-icon" aria-hidden="true">${ICON.play}</span>
             </button>
             ${editButton(m)}
           </div>
@@ -1757,8 +1759,8 @@ const player = (() => {
   let current = null;
   let lastSave = 0;
 
-  const PLAY = svg('<path d="M7 4l13 8-13 8z" fill="currentColor"/>');
-  const PAUSE = svg('<path d="M7 4h3v16H7zM14 4h3v16h-3z" fill="currentColor"/>');
+  const PLAY = ICON.play;
+  const PAUSE = ICON.pause;
   const fmt = (t) => {
     if (!Number.isFinite(t)) return '0:00';
     t = Math.floor(t);
@@ -1794,7 +1796,10 @@ const player = (() => {
   function markPlaying() {
     document.querySelectorAll('[data-play]').forEach((b) => {
       const isCurrent = current && b.dataset.play === current.id;
-      b.classList.toggle('playing', Boolean(isCurrent && !audio.paused));
+      const on = Boolean(isCurrent && !audio.paused);
+      b.classList.toggle('playing', on);
+      const icon = b.querySelector('.play-icon');
+      if (icon) icon.innerHTML = on ? ICON.pause : ICON.play;
     });
   }
 
