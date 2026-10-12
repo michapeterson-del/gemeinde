@@ -1344,6 +1344,45 @@ function announcementCard(a) {
 }
 
 // Termine gruppieren: Diese Woche, Nächste Woche, danach nach Monat.
+// Kompakte Terminliste wie ein Kalender: pro Tag eine Datumsspalte, darunter Uhrzeit · Titel · Ort.
+const WEEKDAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+function agenda(events, today) {
+  const days = [];
+  for (const e of events) {
+    if (!days.length || days[days.length - 1].date !== e.date) days.push({ date: e.date, events: [] });
+    days[days.length - 1].events.push(e);
+  }
+  return `<div class="agenda">${days.map((day) => {
+    const d = parseDate(day.date);
+    const diff = daysBetween(today, day.date);
+    const label = diff === 0 ? 'Heute' : diff === 1 ? 'Morgen' : WEEKDAY_SHORT[d.getDay()];
+    return `
+      <div class="agenda-day${diff === 0 ? ' today' : ''}">
+        <div class="agenda-date"><b>${label}</b><span>${d.getDate()}.${d.getMonth() + 1}.</span></div>
+        <div class="agenda-items">${day.events.map((e) => {
+          const cat = categoryOf(e);
+          const time = e.time ? `${esc(e.time)}${e.endTime ? '–' + esc(e.endTime) : ''}` : '';
+          return `
+            <div class="agenda-item${e.isCancelled ? ' cancelled' : ''}">
+              <span class="agenda-time">${time || '&nbsp;'}</span>
+              <div class="grow">
+                <span class="agenda-title">${esc(cat.icon)} ${esc(e.title)}</span>${e.isCancelled ? ' <span class="badge-cancel">fällt aus</span>' : ''}
+                ${e.location ? `<span class="meta"> · ${esc(e.location)}</span>` : ''}
+                ${e.repeat && e.repeat !== 'none' ? `<span class="meta" title="${esc(e.repeatLabel)}"> · 🔁</span>` : ''}
+                ${e.text ? `<div class="agenda-text">${esc(e.text)}</div>` : ''}
+              </div>
+              ${isAdmin() ? `
+                <div class="agenda-admin">
+                  ${e.repeat !== 'none' ? `<button class="link-btn" data-cancel="${esc(e.id)}" data-date="${esc(e.date)}">${e.isCancelled ? 'findet statt' : 'absagen'}</button>` : ''}
+                  <button class="icon-btn small" data-news="${esc(e.id)}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button>
+                </div>` : ''}
+            </div>`;
+        }).join('')}</div>
+      </div>`;
+  }).join('')}</div>`;
+}
+
 function groupEvents(events, today) {
   const t = parseDate(today);
   const toSunday = (7 - t.getDay()) % 7;
@@ -1399,7 +1438,7 @@ function newsPreview(news) {
       <div class="news-columns">
         ${news.announcements.length ? `<div class="announcements">${news.announcements.slice(0, 3).map(announcementCard).join('')}
           ${news.announcements.length > 3 ? `<a href="#/aktuelles" class="meta">+ ${news.announcements.length - 3} weitere Vermeldungen</a>` : ''}</div>` : ''}
-        ${upcoming.length ? `<div><h3 class="sub-head">Nächste Termine</h3><div class="events">${upcoming.map((e) => eventRow(e, news.today)).join('')}</div></div>` : ''}
+        ${upcoming.length ? `<div><h3 class="sub-head">Nächste Termine</h3>${agenda(upcoming, news.today)}</div>` : ''}
       </div>
     </section>`;
 }
@@ -1429,7 +1468,7 @@ async function renderNews(days = 42) {
     <h2 class="section">Termine</h2>
     ${groups.length ? groups.map((g) => `
       <h3 class="date-head">${esc(g.label)}</h3>
-      <div class="events">${g.events.map((e) => eventRow(e, news.today)).join('')}</div>`).join('')
+      ${agenda(g.events, news.today)}`).join('')
       : '<p class="meta">Keine anstehenden Termine in den nächsten Wochen.</p>'}
     ${days < 400 ? '<button class="btn secondary no-print" id="more-events" style="margin-top:16px">Weitere Termine anzeigen</button>' : ''}
 
