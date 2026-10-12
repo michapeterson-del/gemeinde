@@ -425,6 +425,39 @@ details summary { cursor: pointer; font-weight: 600; margin: 12px 0 4px; }
   .agenda-admin { margin-left: auto; order: 1; }
 }
 
+/* ---------- Fester Audio-Player ---------- */
+
+.player {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  padding: 0 12px 8px;
+}
+#player-seek { width: 100%; height: 18px; margin: 0; padding: 0; border: 0; background: transparent; accent-color: var(--accent); display: block; }
+.player-row { display: flex; align-items: center; gap: 6px; max-width: 1120px; margin: 0 auto; }
+.player-btn { border: 0; background: transparent; color: var(--text); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; position: relative; flex: none; }
+.player-btn small { position: absolute; font-size: 0.55rem; font-weight: 700; top: 50%; left: 50%; transform: translate(-50%, -45%); }
+.player-btn.main { background: var(--accent); color: var(--accent-ink); width: 46px; height: 46px; }
+.player-btn:hover { background: var(--subtle); }
+.player-btn.main:hover { background: var(--accent); filter: brightness(1.1); }
+.player-info { flex: 1; min-width: 0; padding-left: 6px; }
+.player-title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-sub { font-size: 0.8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+body.has-player main.wrap { padding-bottom: 140px; }
+body.has-player .toast { bottom: 100px; }
+body.has-player .upload-pill { bottom: 96px; }
+@media (max-width: 700px) {
+  .player { bottom: calc(58px + env(safe-area-inset-bottom)); }
+  body.has-player main.wrap { padding-bottom: 200px; }
+  body.has-player .toast { bottom: 160px; }
+  body.has-player .upload-pill { bottom: 150px; }
+}
+
 /* ---------- Gebetsanliegen ---------- */
 
 .prayers { display: flex; flex-direction: column; gap: 10px; }

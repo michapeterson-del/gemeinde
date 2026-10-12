@@ -197,9 +197,9 @@ function renderItems(items, { sermons = false, showPath = false } = {}) {
   const docs = items.filter((i) => i.type === 'document');
   const html = [];
 
-  if (media.length && (sermons || showPath)) {
-    html.push(`<h2 class="section">${sermons ? 'Gottesdienste' : 'Aufnahmen'}</h2>${serviceList(media, showPath)}`);
-  } else if (media.length) {
+  if (media.length) {
+    html.push(`<h2 class="section">${sermons ? 'Gottesdienste' : 'Aufnahmen'}</h2>${serviceList(media, showPath, { months: sermons && !showPath })}`);
+  } else if (false) {
     html.push('<h2 class="section">Aufnahmen & Videos</h2><div class="players">');
     for (const m of media) {
       const details = [formatDuration(m.duration), m.speaker && esc(m.speaker), m.bibleText && esc(m.bibleText)].filter(Boolean).join(' · ');
@@ -324,6 +324,10 @@ function serviceList(list, showPath, { months = !showPath } = {}) {
 function bindItems(container, items, reload) {
   container.querySelectorAll('[data-play]').forEach((btn) => btn.addEventListener('click', () => {
     const item = items.find((i) => i.id === btn.dataset.play);
+    if (item.type === 'audio') {
+      player.toggle(item);
+      return;
+    }
     const box = container.querySelector(`[data-player="${item.id}"]`);
     const wasOpen = !box.hidden;
     // Immer nur eine Aufnahme gleichzeitig
@@ -343,6 +347,8 @@ function bindItems(container, items, reload) {
       ${item.description ? `<p class="desc">${esc(item.description)}</p>` : ''}
       <a class="meta" href="${esc(fileUrl(item))}" download="${esc(item.originalName)}">Herunterladen (${esc(formatSize(item.size))})</a>`;
   }));
+
+  player.markPlaying();
 
   const images = items.filter((i) => i.type === 'image');
   container.querySelectorAll('[data-photo]').forEach((el) =>
@@ -544,6 +550,7 @@ async function renderSearch(params) {
 }
 
 async function logout() {
+  player.close();
   await api('/api/logout', { method: 'POST' });
   state.user = null;
   location.hash = '#/';
@@ -1737,6 +1744,138 @@ function openPrayerDialog(prayer, after) {
     });
   });
 }
+
+// ---------- Fester Audio-Player (läuft weiter – auch bei gesperrtem Handy) ----------
+//
+// Ein einziges <audio>-Element außerhalb der Seiteninhalte: Es bleibt beim Wechseln der Seiten bestehen.
+// Über die Media-Session-Schnittstelle erscheinen Titel und Steuerung auf dem Sperrbildschirm.
+
+const player = (() => {
+  const el = document.getElementById('player');
+  const audio = document.getElementById('player-audio');
+  const $ = (sel) => el.querySelector(sel);
+  let current = null;
+  let lastSave = 0;
+
+  const PLAY = svg('<path d="M7 4l13 8-13 8z" fill="currentColor"/>');
+  const PAUSE = svg('<path d="M7 4h3v16H7zM14 4h3v16h-3z" fill="currentColor"/>');
+  const fmt = (t) => {
+    if (!Number.isFinite(t)) return '0:00';
+    t = Math.floor(t);
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = String(t % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+  };
+  const posKey = (id) => `pos:${id}`;
+  const savePos = () => {
+    if (!current) return;
+    try {
+      if (audio.duration && audio.currentTime > audio.duration - 30) localStorage.removeItem(posKey(current.id));
+      else localStorage.setItem(posKey(current.id), String(Math.floor(audio.currentTime)));
+    } catch {}
+  };
+  const savedPos = (id) => {
+    try { return Number(localStorage.getItem(posKey(id))) || 0; } catch { return 0; }
+  };
+
+  function updateUi() {
+    const playing = !audio.paused;
+    $('#player-toggle').innerHTML = playing ? PAUSE : PLAY;
+    $('#player-toggle').setAttribute('aria-label', playing ? 'Pause' : 'Abspielen');
+    $('#player-time').textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration || (current && current.duration))}`;
+    const seek = $('#player-seek');
+    if (!seek.matches(':active')) {
+      seek.max = audio.duration || (current && current.duration) || 0;
+      seek.value = audio.currentTime || 0;
+    }
+    markPlaying();
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+  }
+
+  function markPlaying() {
+    document.querySelectorAll('[data-play]').forEach((b) => {
+      const isCurrent = current && b.dataset.play === current.id;
+      b.classList.toggle('playing', Boolean(isCurrent && !audio.paused));
+    });
+  }
+
+  function setMediaSession(item) {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: itemTitle(item),
+      artist: item.speaker || 'Gemeinde-Mediathek',
+      album: formatDate(item.date),
+      artwork: [
+        { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      ],
+    });
+    const handlers = {
+      play: () => audio.play(),
+      pause: () => audio.pause(),
+      stop: () => close(),
+      seekbackward: (d) => { audio.currentTime = Math.max(0, audio.currentTime - ((d && d.seekOffset) || 15)); },
+      seekforward: (d) => { audio.currentTime = Math.min(audio.duration || Infinity, audio.currentTime + ((d && d.seekOffset) || 30)); },
+      seekto: (d) => { if (d && Number.isFinite(d.seekTime)) audio.currentTime = d.seekTime; },
+    };
+    for (const [action, fn] of Object.entries(handlers)) {
+      try { navigator.mediaSession.setActionHandler(action, fn); } catch {}
+    }
+  }
+
+  function play(item) {
+    if (!current || current.id !== item.id) {
+      savePos();
+      current = item;
+      audio.src = fileUrl(item);
+      const resume = savedPos(item.id);
+      if (resume > 10) {
+        audio.addEventListener('loadedmetadata', () => { audio.currentTime = resume; }, { once: true });
+      }
+      // Ohne eigenen Titel: kurz „Gottesdienst“ (das Datum steht darunter)
+      $('#player-title').textContent = item.title || (isServiceItem(item) ? 'Gottesdienst' : itemTitle(item));
+      $('#player-sub').textContent = [formatDate(item.date), item.speaker].filter(Boolean).join(' · ');
+      setMediaSession(item);
+      el.hidden = false;
+      document.body.classList.add('has-player');
+      if (resume > 10) toast(`Weiter bei ${fmt(resume)}`);
+    }
+    audio.play().catch(() => {});
+  }
+
+  function toggle(item) {
+    if (current && current.id === item.id && !audio.paused) audio.pause();
+    else play(item);
+  }
+
+  function close() {
+    savePos();
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+    current = null;
+    el.hidden = true;
+    document.body.classList.remove('has-player');
+    markPlaying();
+  }
+
+  $('#player-toggle').addEventListener('click', () => (audio.paused ? audio.play() : audio.pause()));
+  $('#player-back').addEventListener('click', () => { audio.currentTime = Math.max(0, audio.currentTime - 15); });
+  $('#player-fwd').addEventListener('click', () => { audio.currentTime = Math.min(audio.duration || Infinity, audio.currentTime + 30); });
+  $('#player-close').addEventListener('click', close);
+  $('#player-seek').addEventListener('input', (e) => { audio.currentTime = Number(e.target.value); });
+  for (const ev of ['play', 'pause', 'loadedmetadata', 'durationchange', 'ended']) audio.addEventListener(ev, updateUi);
+  audio.addEventListener('timeupdate', () => {
+    updateUi();
+    if (Date.now() - lastSave > 5000) { lastSave = Date.now(); savePos(); }
+  });
+  audio.addEventListener('pause', savePos);
+  audio.addEventListener('ended', () => {
+    try { if (current) localStorage.removeItem(posKey(current.id)); } catch {}
+  });
+  window.addEventListener('pagehide', savePos);
+
+  return { play, toggle, close, markPlaying };
+})();
 
 // ---------- Lightbox ----------
 
