@@ -388,7 +388,11 @@ async function renderHome() {
     .filter((f) => isAdmin() || f.itemCount || f.childCount) // leere Bereiche nur für Admins
     .sort((x, y) => (x.kind === 'sermons' ? 0 : 1) - (y.kind === 'sermons' ? 0 : 1) || x.name.localeCompare(y.name, 'de'));
 
-  const [news, prayers] = await Promise.all([api('/api/news'), api('/api/prayers').catch(() => [])]);
+  const [news, prayers, verse] = await Promise.all([
+    api('/api/news'),
+    api('/api/prayers').catch(() => []),
+    api('/api/verse').catch(() => null),
+  ]);
   state.eventCategories = news.categories;
   const hour = new Date().getHours();
   const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Hallo' : 'Guten Abend';
@@ -404,6 +408,12 @@ async function renderHome() {
   app.innerHTML = `
     <section class="hero">
       <h1>${state.user.shared ? 'Herzlich willkommen!' : `${greeting}, ${esc(state.user.name)}!`}</h1>
+      ${verse ? `
+        <figure class="verse">
+          <figcaption class="verse-label">Vers des Tages${isAdmin() ? ' · <button type="button" class="link-btn" id="edit-verse">ändern</button>' : ''}</figcaption>
+          <blockquote>„${esc(verse.text)}“</blockquote>
+          <div class="verse-ref">${esc(verse.ref)}</div>
+        </figure>` : ''}
       <form id="hero-search" role="search">
         <input name="q" placeholder="Suche nach Gottesdienst, Bibelstelle, Freizeit …" aria-label="Suche">
         <button class="btn light">Suchen</button>
@@ -430,6 +440,8 @@ async function renderHome() {
     location.hash = '#/suche?q=' + encodeURIComponent(e.target.q.value);
   });
   if (isAdmin()) document.getElementById('new-folder').onclick = () => openFolderDialog({ parentId: null });
+  const ev = document.getElementById('edit-verse');
+  if (ev) ev.onclick = () => openVerseDialog(verse, renderHome);
   const preview = document.getElementById('news-preview');
   bindNews(preview, news, renderHome);
   preview.querySelectorAll('[data-new-news]').forEach((b) => (b.onclick = () => openNewsDialog(b.dataset.newNews, null, renderHome)));
@@ -1530,6 +1542,47 @@ function openNewsDialog(type, entry, after) {
         dialog.close();
         toast('Gelöscht');
         if (after) after();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+}
+
+// ---------- Vers des Tages ----------
+
+function openVerseDialog(verse, after) {
+  openDialog(`
+    <form id="verse-form">
+      <h2>Vers des Tages</h2>
+      <p class="meta">Normalerweise erscheint jeden Tag automatisch ein Vers (Lutherbibel 1912). Hier kannst du für einen Tag einen eigenen Vers festlegen – z. B. passend zur Predigt.</p>
+      <div class="form-grid">
+        <label>Für den Tag <input type="date" name="date" value="${esc(verse.date)}" required></label>
+        <label>Bibelstelle <input name="ref" maxlength="100" required value="${esc(verse.custom ? verse.ref : '')}" placeholder="z. B. Psalm 23,1"></label>
+        <label class="full">Verstext <textarea name="text" rows="4" maxlength="1000" required>${esc(verse.custom ? verse.text : '')}</textarea></label>
+      </div>
+      <div class="row dialog-actions">
+        ${verse.custom ? '<button type="button" class="btn secondary" id="verse-reset">Wieder automatisch</button>' : ''}
+        <span class="grow"></span>
+        <button type="button" class="btn secondary" data-close>Abbrechen</button>
+        <button class="btn">Speichern</button>
+      </div>
+    </form>`, (d) => {
+    const form = d.querySelector('#verse-form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await api('/api/verse', { method: 'PUT', body: formData(form) });
+        dialog.close();
+        toast('Vers gespeichert ✓');
+        after();
+      } catch (err) { toast(err.message, true); }
+    });
+    const reset = d.querySelector('#verse-reset');
+    if (reset) reset.onclick = async () => {
+      try {
+        await api(`/api/verse/${form.date.value}`, { method: 'DELETE' });
+        dialog.close();
+        toast('Es wird wieder automatisch ein Vers gezeigt');
+        after();
       } catch (err) { toast(err.message, true); }
     };
   });

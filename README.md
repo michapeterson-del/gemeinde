@@ -40,6 +40,8 @@ und Erinnerungen an einem Ort gesammelt werden – übersichtlich nach Kategorie
   - **Vermeldungen** mit „anzeigen ab / bis“ (ohne Enddatum 4 Wochen sichtbar),
     wichtige Vermeldungen werden hervorgehoben
   - Termine sortiert nach „Diese Woche“, „Nächste Woche“ und Monaten – und zum **Ausdrucken**
+- **Vers des Tages** auf der Startseite: jeden Tag automatisch ein anderer Vers (Lutherbibel 1912, gemeinfrei);
+  Admins können für einzelne Tage einen eigenen Vers festlegen, z. B. passend zur Predigt.
 - **Gebetsanliegen**: schlichte Liste, die nur Admins schreiben; nicht mehr aktuelle Anliegen werden einfach gelöscht.
 - **Suche** über Titel, Texte, Prediger, Bibelstellen, Ordnernamen und Jahreszahlen.
 - Funktioniert auf Handy, Tablet und Computer und lässt sich auf dem Handy

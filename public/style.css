@@ -96,6 +96,11 @@ main.wrap { padding: 24px 16px 80px; min-height: 80vh; }
 .hero h1 { margin: 0 0 8px; }
 .hero p { margin: 0 0 20px; color: var(--muted); }
 .hero form { display: flex; gap: 8px; max-width: 520px; }
+.verse { margin: 4px 0 20px; padding: 2px 0 2px 16px; border-left: 3px solid var(--accent); }
+.verse-label { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.verse-label .link-btn { font-size: 0.78rem; text-transform: none; letter-spacing: 0; padding: 0; }
+.verse blockquote { margin: 4px 0 2px; font-size: 1.12rem; line-height: 1.55; font-family: Georgia, "Times New Roman", serif; }
+.verse-ref { font-size: 0.9rem; color: var(--muted); font-weight: 600; }
 .hero input { flex: 1; }
 
 h2.section { margin: 32px 0 14px; font-size: 1.25rem; }

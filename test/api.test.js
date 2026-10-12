@@ -424,3 +424,25 @@ test('Alte Daten werden beim Start vereinfacht (Gebetsanliegen, Rolle Gemeindele
   assert.equal(store.getUser('leader-id').role, 'member');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('Vers des Tages: automatisch, eigener Vers vom Admin, zurücksetzen', async () => {
+  const { verseForDate, VERSES } = require('../lib/verses');
+  // Jeden Tag ein anderer Vers, für alle gleich
+  assert.notEqual(verseForDate('2026-10-12').ref, verseForDate('2026-10-13').ref);
+  assert.equal(verseForDate('2026-10-12').ref, verseForDate('2026-10-12').ref);
+  assert.ok(VERSES.every((v) => v.ref && v.text));
+
+  const auto = await (await req('GET', '/api/verse?date=2026-12-24', { as: 'gemeinde' })).json();
+  assert.equal(auto.custom, false);
+  assert.equal(auto.ref, verseForDate('2026-12-24').ref);
+
+  assert.equal((await req('PUT', '/api/verse', { as: 'gemeinde', body: { date: '2026-12-24', text: 'X', ref: 'Y' } })).status, 403);
+  assert.equal((await req('PUT', '/api/verse', { as: 'admin', body: { date: '2026-12-24', text: '', ref: 'Lukas 2,11' } })).status, 400);
+  const own = await (await req('PUT', '/api/verse', { as: 'admin', body: { date: '2026-12-24', text: 'Denn euch ist heute der Heiland geboren, welcher ist Christus, der HERR, in der Stadt Davids.', ref: 'Lukas 2,11' } })).json();
+  assert.equal(own.custom, true);
+  const seen = await (await req('GET', '/api/verse?date=2026-12-24', { as: 'gemeinde' })).json();
+  assert.equal(seen.ref, 'Lukas 2,11');
+
+  const reset = await (await req('DELETE', '/api/verse/2026-12-24', { as: 'admin' })).json();
+  assert.equal(reset.custom, false);
+});

@@ -288,6 +288,12 @@ function createApp({
     if (item.file) fs.rmSync(path.join(uploadDir, item.file), { force: true });
   }
 
+  // ---------- Vers des Tages ----------
+
+  app.get('/api/verse', requireLogin, handle((req) => store.verseOfDay(validDate(req.query.date) || undefined)));
+  app.put('/api/verse', requireAdmin, handle((req) => store.setVerse(req.body || {})));
+  app.delete('/api/verse/:date', requireAdmin, handle((req) => store.resetVerse(req.params.date)));
+
   // ---------- Gebetsanliegen ----------
   // Alle Angemeldeten sehen sie, nur Admins schreiben, ändern und löschen sie.
 
