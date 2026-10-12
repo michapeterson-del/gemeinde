@@ -411,6 +411,10 @@ details summary { cursor: pointer; font-weight: 600; margin: 12px 0 4px; }
 .icon-btn:hover { color: var(--text); }
 .icon-btn svg { display: block; }
 .brand-icon { border-radius: 7px; }
+.home-icon, .folder-tile-icon, .folder-icon { color: var(--accent); background: var(--accent-soft) !important; }
+.home-icon svg { width: 26px; height: 26px; }
+.folder-tile-icon svg { width: 22px; height: 22px; }
+.folder-icon svg { width: 30px; height: 30px; }
 .bottomnav a span { display: grid; place-items: center; height: 26px; }
 @media (max-width: 700px) {
   .agenda-day { gap: 10px; padding: 10px 12px; }

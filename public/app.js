@@ -14,6 +14,10 @@ const TYPE_ICON = { image: 'Bild', audio: 'Audio', video: 'Video', document: 'Do
 // Schlichte, einfarbige Symbole (SVG) – keine bunten Emojis
 const svg = (d) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICON = {
+  church: svg('<path d="M12 2v4M10 4h4"/><path d="M6 21V11l6-5 6 5v10"/><path d="M3 21h18"/><path d="M10 21v-4a2 2 0 0 1 4 0v4"/>'),
+  image: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/>'),
+  file: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/>'),
+  folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
   edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
   trash: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>'),
 };
@@ -145,6 +149,14 @@ dialog.addEventListener('close', () => (dialog.innerHTML = ''));
 
 // ---------- Bausteine ----------
 
+function folderIcon(f) {
+  if (f.kind === 'sermons') return ICON.church;
+  const name = (f.name || '').toLowerCase();
+  if (!f.parentId && /bild|foto/.test(name)) return ICON.image;
+  if (!f.parentId && /dokument|text/.test(name)) return ICON.file;
+  return ICON.folder;
+}
+
 function folderTile(f) {
   const sub = [
     f.childCount ? `${f.childCount} Ordner` : '',
@@ -152,6 +164,7 @@ function folderTile(f) {
   ].filter(Boolean).join(' · ') || 'leer';
   return `
     <a class="folder-tile" href="#/ordner/${esc(f.id)}">
+      <span class="folder-tile-icon" aria-hidden="true">${folderIcon(f)}</span>
       <span class="grow">
         <span class="title">${esc(f.name)}</span>
         <span class="meta">${esc(sub)}</span>
@@ -432,6 +445,7 @@ async function renderHome() {
     <nav class="home-tiles" aria-label="Bereiche">
       ${tops.map((f) => `
         <a class="home-tile" href="#/ordner/${esc(f.id)}">
+          <span class="home-icon" aria-hidden="true">${folderIcon(f)}</span>
           <span class="grow"><span class="home-name">${esc(f.name)}</span><span class="meta">${esc(sub(f))}</span></span>
           <span class="home-arrow" aria-hidden="true">›</span>
         </a>`).join('')}
@@ -465,7 +479,8 @@ async function renderFolder(id) {
   app.innerHTML = `
     <nav class="crumbs"><a href="#/">Start</a>${path.map((p, i) =>
       i === path.length - 1 ? ` › <span>${esc(p.name)}</span>` : ` › <a href="#/ordner/${esc(p.id)}">${esc(p.name)}</a>`).join('')}</nav>
-    <div class="folder-head" style="--c:${esc(folder.color)}">
+    <div class="folder-head">
+      <div class="folder-icon">${folderIcon(folder)}</div>
       <div class="grow">
         <h1>${esc(folder.name)}</h1>
         ${folder.description ? `<p class="meta">${esc(folder.description)}</p>` : ''}
