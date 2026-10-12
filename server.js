@@ -241,7 +241,14 @@ function createApp({
   app.post('/api/users', requireAdmin, handle((req, res) => {
     res.status(201).json(store.createUser(req.body || {}));
   }));
-  app.put('/api/users/:id', requireAdmin, handle((req) => store.updateUser(req.params.id, req.body || {})));
+  app.put('/api/users/:id', requireAdmin, handle((req) => {
+    const target = store.getUser(req.params.id);
+    // Das Passwort des Haupt-Admins kann nur er selbst ändern (unter „Konto“) – oder per ADMIN_PASSWORD_RESET.
+    if (target && target.username === 'admin' && req.user.id !== target.id && (req.body || {}).password) {
+      throw new Error('Das Passwort des Haupt-Admins kann nur er selbst ändern.');
+    }
+    return store.updateUser(req.params.id, req.body || {});
+  }));
   app.delete('/api/users/:id', requireAdmin, handle((req) => {
     if (req.params.id === req.user.id) throw new Error('Du kannst dich nicht selbst löschen.');
     return store.deleteUser(req.params.id) && { ok: true };

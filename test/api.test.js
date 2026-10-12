@@ -446,3 +446,21 @@ test('Vers des Tages: automatisch, eigener Vers vom Admin, zurücksetzen', async
   const reset = await (await req('DELETE', '/api/verse/2026-12-24', { as: 'admin' })).json();
   assert.equal(reset.custom, false);
 });
+
+test('Der Haupt-Admin „admin“ ist geschützt', async () => {
+  // zweiten Admin anlegen und als dieser anmelden
+  await req('POST', '/api/users', { as: 'admin', body: { name: 'Zweiter Admin', username: 'admin2', password: 'admin2pw', role: 'admin' } });
+  await login('admin2', 'admin2', 'admin2pw');
+  const users = await (await req('GET', '/api/users', { as: 'admin2' })).json();
+  const main = users.find((u) => u.username === 'admin');
+  assert.equal(main.main, true);
+
+  assert.equal((await req('DELETE', `/api/users/${main.id}`, { as: 'admin2' })).status, 400);
+  assert.equal((await req('PUT', `/api/users/${main.id}`, { as: 'admin2', body: { role: 'member' } })).status, 400);
+  assert.equal((await req('PUT', `/api/users/${main.id}`, { as: 'admin2', body: { password: 'uebernahme123' } })).status, 400);
+  // Haupt-Admin kann sich weiterhin anmelden
+  assert.equal((await req('POST', '/api/login', { body: { username: 'admin', password: 'geheim123' } })).status, 200);
+  // Andere Admins lassen sich normal löschen
+  const second = users.find((u) => u.username === 'admin2');
+  assert.equal((await req('DELETE', `/api/users/${second.id}`, { as: 'admin' })).status, 200);
+});

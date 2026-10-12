@@ -607,12 +607,13 @@ async function renderAdmin() {
         ${users.map((u) => `
           <div class="user-row">
             <div class="grow"><b>${esc(u.name)}</b> <span class="meta">${esc(u.username)}</span></div>
+            ${u.main ? '<span class="role">Haupt-Admin</span>' : `
             <select data-role="${esc(u.id)}" aria-label="Rolle von ${esc(u.name)}">
               <option value="member" ${u.role === 'member' ? 'selected' : ''}>Normal</option>
               <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
-            </select>
-            <button class="btn small secondary" data-reset="${esc(u.id)}">🔑 Passwort</button>
-            ${u.id === state.user.id ? '<span class="meta">(du)</span>' : `<button class="btn small danger" data-deluser="${esc(u.id)}" aria-label="${esc(u.name)} löschen">🗑️</button>`}
+            </select>`}
+            ${u.main && u.id !== state.user.id ? '' : `<button class="btn small secondary" data-reset="${esc(u.id)}">🔑 Passwort</button>`}
+            ${u.id === state.user.id ? '<span class="meta">(du)</span>' : u.main ? '<span class="meta">🔒 geschützt</span>' : `<button class="btn small danger" data-deluser="${esc(u.id)}" aria-label="${esc(u.name)} löschen">🗑️</button>`}
           </div>`).join('')}
       </div>
       <form id="new-user" class="form-grid" style="margin-top:18px">
@@ -1472,6 +1473,7 @@ function openNewsDialog(type, entry, after) {
 
   const form = isEvent ? `
     <h2>${isNew ? '📅 Neuer Termin' : '📅 Termin bearbeiten'}</h2>
+    <p class="meta">Termine sind Veranstaltungen mit <b>Datum und Uhrzeit</b> – z. B. Gottesdienst, Gemeindestunde, Abendmahl, Kindertag, Orchesterprobe. Sie erscheinen im Kalender unter „Nächste Termine“.</p>
     <div class="form-grid">
       <label class="full">Titel <input name="title" required maxlength="200" value="${esc(e.title)}" placeholder="z. B. Gemeindestunde, Orchesterprobe, Kindertag"></label>
       <label>Art
@@ -1488,6 +1490,7 @@ function openNewsDialog(type, entry, after) {
     </div>`
   : `
     <h2>${isNew ? '📢 Neue Vermeldung' : '📢 Vermeldung bearbeiten'}</h2>
+    <p class="meta">Vermeldungen sind <b>Mitteilungen an die Gemeinde</b> ohne festen Termin – z. B. „Anmeldung zum Kindertag bis Sonntag“, Kollekten-Zweck, Dank, Hinweise. Sie werden für eine bestimmte Zeit angezeigt.</p>
     <div class="form-grid">
       <label class="full">Überschrift <input name="title" required maxlength="200" value="${esc(e.title)}" placeholder="z. B. Anmeldung zum Kindertag"></label>
       <label class="full">Text <textarea name="text" maxlength="10000" rows="7">${esc(e.text)}</textarea></label>
