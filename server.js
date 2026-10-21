@@ -34,12 +34,11 @@ function safeExt(name) {
   return path.extname(name).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
 }
 
-// Bei Render ohne Disk (z. B. kostenloser Plan) ist der Speicher nicht dauerhaft:
-// bei jedem Neustart/Update wären alle Daten weg.
+// Im Betrieb (Coolify) müssen DATA_DIR und UPLOAD_DIR auf das dauerhafte Volume zeigen –
+// sonst liegen die Daten im Container und wären nach dem nächsten Deploy weg.
 function ephemeralStorage() {
-  if (!process.env.RENDER) return false;
-  const dir = process.env.DATA_DIR || '';
-  return !dir.startsWith('/var/data');
+  if (process.env.NODE_ENV !== 'production') return false;
+  return !process.env.DATA_DIR || !process.env.UPLOAD_DIR;
 }
 
 function createApp({
@@ -50,7 +49,7 @@ function createApp({
   adminPasswordReset = (process.env.ADMIN_PASSWORD_RESET || '').trim(),
   sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
 } = {}) {
-  // Laufende Uploads überleben einen Neustart (z. B. ein Update bei Render).
+  // Laufende Uploads überleben einen Neustart (z. B. ein neues Deploy).
   // Nur Reste, die älter als einen Tag sind, werden weggeräumt.
   const tmpDir = path.join(uploadDir, '.tmp');
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -80,8 +79,9 @@ function createApp({
   }
   const tokens = createTokens(sessionSecret);
   const app = express();
-  // Hinter einem Proxy wie bei Render: echte Besucher-IP und HTTPS erkennen.
-  if (process.env.TRUST_PROXY || process.env.RENDER) app.set('trust proxy', 1);
+  // Läuft hinter einem Reverse-Proxy (Traefik in Coolify): echte Besucher-IP und HTTPS erkennen.
+  // Mit TRUST_PROXY=0 abschaltbar, falls die App einmal direkt ohne Proxy läuft.
+  if (process.env.TRUST_PROXY !== '0') app.set('trust proxy', 1);
 
   app.use(express.json({ limit: '1mb' }));
   app.use((req, res, next) => {
@@ -128,7 +128,7 @@ function createApp({
     return Math.ceil((list[list.length - 10] + LOCK_MS - now) / 1000);
   }
 
-  // Echte Besucher-IP (hinter Render/Cloudflare) – und pro Konto zählen,
+  // Echte Besucher-IP (hinter dem Reverse-Proxy) – und pro Konto zählen,
   // damit sich nicht alle gegenseitig aussperren.
   const attemptKey = (req) => {
     const ip = req.headers['cf-connecting-ip'] || req.headers['true-client-ip'] || req.ip;
@@ -227,7 +227,7 @@ function createApp({
     let total = null;
     let free = null;
     try {
-      // Bei Render ist das die Größe der eingestellten Disk.
+      // Größe und freier Platz des Laufwerks/Volumes, auf dem die Dateien liegen.
       const st = fs.statfsSync(uploadDir);
       total = st.blocks * st.bsize;
       free = st.bavail * st.bsize;
@@ -579,7 +579,7 @@ if (require.main === module) {
     console.warn('⚠️  ADMIN_PASSWORD ist nicht gesetzt – der erste Admin heißt "admin" mit Passwort "gemeinde". Bitte gleich ändern!');
   }
   if (ephemeralStorage()) {
-    console.error('❌ ACHTUNG: Kein dauerhafter Speicher (Disk) eingerichtet! Bei jedem Neustart oder Update gehen ALLE Daten verloren (Benutzer, Passwörter, Aufnahmen). Bitte eine Disk unter /var/data anlegen – siehe ANLEITUNG-RENDER.md.');
+    console.error('❌ ACHTUNG: Kein dauerhafter Speicherort eingestellt! Bei jedem Neustart oder Update gehen ALLE Daten verloren (Benutzer, Passwörter, Aufnahmen). DATA_DIR und UPLOAD_DIR müssen auf das dauerhafte Volume (z. B. /var/data/db und /var/data/uploads) zeigen – siehe BETRIEB.md.');
   }
   if (!process.env.SESSION_SECRET) {
     console.warn('ℹ️  SESSION_SECRET ist nicht gesetzt – nach jedem Neustart muss man sich neu anmelden.');

@@ -297,7 +297,7 @@ test('Hochladen in Stücken (z. B. ganzer Gottesdienst als M4A)', async () => {
   assert.equal((await again.json()).id, item.id);
 });
 
-test('Ein Upload übersteht einen Neustart des Servers (z. B. Update bei Render)', async () => {
+test('Ein Upload übersteht einen Neustart des Servers (z. B. ein neues Deploy)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemeinde-restart-'));
   const opts = { dataDir: path.join(dir, 'data'), uploadDir: path.join(dir, 'uploads'), adminPassword: 'admin-pw', sessionSecret: 'gleich' };
   const start = () => new Promise((resolve) => { const s = createApp(opts).listen(0, () => resolve(s)); });

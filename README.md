@@ -70,6 +70,7 @@ Unter **Verwaltung** legst du dann weitere Benutzer an.
 | `TZ`              | Zeitzone für „heute“ bei Terminen, z. B. `Europe/Berlin` | Server-Zeitzone |
 | `DATA_DIR` / `UPLOAD_DIR` | Speicherort für Datenbank / Dateien | `data/` / `uploads/` |
 | `ADMIN_PASSWORD_RESET` | Notfall: setzt das Passwort von `admin` zurück (danach wieder entfernen) | – |
+| `TRUST_PROXY` | `0` = App läuft ohne Reverse-Proxy (Standard: hinter Proxy) | – |
 | `MAX_UPLOAD_MB`   | Maximale Größe pro Datei in MB                     | `2048`       |
 
 ## Wo liegen die Daten?
@@ -81,17 +82,11 @@ Unter **Verwaltung** legst du dann weitere Benutzer an.
 
 ## Online stellen
 
-👉 **Schritt-für-Schritt-Anleitung für Render: [ANLEITUNG-RENDER.md](ANLEITUNG-RENDER.md)**
+Die App läuft auf einem eigenen Server (Hetzner) mit **Coolify** unter
+**https://gemeinde-mediathek.micha-apps.de**. Jeder Push auf den Branch
+`claude/gemeinde-media-archive-9vqgft` wird automatisch live gestellt.
 
-Die Seite braucht einen kleinen Server mit Node.js und genug Speicherplatz für die Medien
-(Gottesdienst-Videos werden schnell groß). Möglichkeiten:
-
-- ein günstiger V-Server (z. B. bei Hetzner, Netcup, Strato) mit einer eigenen Domain
-- ein Raspberry Pi oder NAS im Gemeindehaus
-- Plattformen wie Render oder Railway – wichtig: einen **dauerhaften Speicher (Volume)**
-  für `data/` und `uploads/` einrichten
-
-Online immer **HTTPS** verwenden (z. B. über Caddy oder nginx mit Let's Encrypt).
+👉 **Alles zum Betrieb (Umgebungsvariablen, Speicherort, Sicherung): [BETRIEB.md](BETRIEB.md)**
 
 > 💡 Bitte daran denken: Bevor Fotos von Personen – besonders von Kindern und Jugendlichen –
 > öffentlich gezeigt werden, braucht es deren Einverständnis bzw. das der Eltern (DSGVO).

@@ -723,11 +723,10 @@ function storageCard(st) {
   const warning = st.persistent === false ? `
     <section class="card danger-card">
       <h2>Achtung: Daten werden nicht dauerhaft gespeichert!</h2>
-      <p>Bei Render ist für diese App <b>keine Disk (dauerhafter Speicher)</b> eingerichtet. Bei jedem Neustart oder Update
-      gehen <b>alle Daten verloren</b> – Benutzer, Passwörter, Termine und Aufnahmen.</p>
-      <p>Lösung: bei Render den Plan <b>„Starter“</b> wählen und unter <b>Disks</b> eine Disk mit dem Pfad <b>/var/data</b> anlegen,
-      außerdem unter <b>Environment</b> <code>DATA_DIR=/var/data/db</code> und <code>UPLOAD_DIR=/var/data/uploads</code> setzen
-      (oder den Dienst über den Blueprint neu anlegen). Erst danach Aufnahmen hochladen.</p>
+      <p>Auf dem Server ist <b>kein dauerhafter Speicherort</b> eingestellt. Beim nächsten Update könnten
+      <b>alle Daten verloren gehen</b> – Benutzer, Passwörter, Termine und Aufnahmen.</p>
+      <p>Lösung: in Coolify die Umgebungsvariablen <code>DATA_DIR=/var/data/db</code> und <code>UPLOAD_DIR=/var/data/uploads</code>
+      setzen (das Volume ist unter <b>/var/data</b> eingebunden). Erst danach Aufnahmen hochladen.</p>
     </section>` : '';
   return warning + storageCardInner(st);
 }
@@ -757,7 +756,7 @@ function storageCardInner(st) {
       <div class="storage-head"><b>${esc(formatSize(st.used))}</b> von ${esc(formatSize(st.total))} belegt <span class="meta">(${pct} %)</span></div>
       <div class="storage-bar ${level}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
       <p class="meta">Noch frei: ${esc(formatSize(st.free))} – Platz für ca. <b>${more.toLocaleString('de-DE')}</b> weitere Gottesdienste (je ca. ${esc(formatSize(avg))}).</p>
-      ${level !== 'ok' ? `<p class="storage-hint">${level === 'full' ? 'Der Speicher ist fast voll!' : 'Der Speicher wird langsam knapp.'} Bei Render unter <b>Disks</b> kannst du ihn vergrößern.</p>` : ''}
+      ${level !== 'ok' ? `<p class="storage-hint">${level === 'full' ? 'Der Speicher ist fast voll!' : 'Der Speicher wird langsam knapp.'} Bitte den Server-Verantwortlichen informieren, damit er mehr Platz schafft.</p>` : ''}
       ${rows ? `<div class="storage-rows">${rows}</div>` : ''}
     </section>`;
 }
@@ -1047,7 +1046,7 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 
-// Wie lange bei Verbindungsproblemen (oder während die App bei Render neu startet)
+// Wie lange bei Verbindungsproblemen (oder während die App nach einem Update neu startet)
 // weiter versucht wird, bevor aufgegeben wird.
 const MAX_WAIT_MS = 5 * 60 * 1000;
 
